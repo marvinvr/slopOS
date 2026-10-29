@@ -35,3 +35,4 @@ Build slopOS: a web-based desktop "operating system" whose apps are procedurally
 
 ## Generator providers (Marvin, 2026-10-29 22:12)
 - The generator must be pluggable: Grok CLI (default, configured for Marvin), Codex CLI (codex exec, ChatGPT subscription) and Claude Code CLI (claude -p, Max subscription). All via the local CLIs and their subscription logins, never API keys. One small provider interface (prompt in, streamed text/files out, timeout, cancel), selected via config/.env (e.g. SLOPOS_GENERATOR=grok|codex|claude, plus model/effort per provider).
+- Grok provider: ACP (grok agent stdio + @agentclientprotocol/sdk) only. Claude: Claude Agent SDK. Codex: codex exec --json. No fallbacks between modes/providers; failures show a clear error.
