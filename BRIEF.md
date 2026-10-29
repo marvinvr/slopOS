@@ -24,3 +24,4 @@ Build slopOS: a web-based desktop "operating system" whose apps are procedurally
 
 ## Style (Marvin, 2026-10-29 22:02)
 - A modern, slightly creative interpretation of macOS: familiar structure (menu bar, dock/launcher, traffic lights, spotlight), but with its own character. Not hyper-modern or flashy; tasteful, warm, a bit playful. The design kit and generated apps follow the same language.
+- Full screen: a clear way to "jump into" slopOS full screen (browser Fullscreen API: menu-bar logo menu item, shortcut, and an inviting button on first load), with a clean exit (Esc / menu item). Keyboard shortcuts should work well in full screen.
