@@ -1,4 +1,4 @@
-export const MENU_H = 36
+export const MENU_H = 28
 export const DOCK_CLEAR = 96
 
 export function workArea(): { x: number; y: number; width: number; height: number } {
@@ -10,7 +10,16 @@ export function workArea(): { x: number; y: number; width: number; height: numbe
   }
 }
 
+export function isMac(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /Mac|iPhone|iPad/.test(navigator.platform)
+}
+
 export function modLabel(): string {
-  if (typeof navigator === 'undefined') return 'Ctrl+'
-  return /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
+  return isMac() ? '⌘' : 'Ctrl+'
+}
+
+export function shortcutLabel(key: string, shift = false): string {
+  if (isMac()) return `${shift ? '⇧' : ''}⌘${key}`
+  return `Ctrl+${shift ? 'Shift+' : ''}${key}`
 }
