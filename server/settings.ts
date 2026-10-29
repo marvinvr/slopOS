@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import type { PersistedScreen } from '../runtime/protocol'
 import { settingsPath } from './paths'
 
 export type SavedRect = { x: number; y: number; width: number; height: number }
@@ -15,6 +16,7 @@ export type SavedWindow = {
   maximized: boolean
   z: number
   restore: SavedRect | null
+  screens: PersistedScreen[]
 }
 
 export type Settings = {
@@ -81,7 +83,7 @@ function normalize(raw: unknown): Settings {
 function normalizeWindow(raw: unknown): SavedWindow | null {
   if (!isObject(raw)) return null
   if (typeof raw.id !== 'string' || typeof raw.appId !== 'string') return null
-  return {
+  const saved: SavedWindow = {
     id: raw.id,
     appId: raw.appId,
     x: finite(raw.x, 80),
@@ -92,7 +94,27 @@ function normalizeWindow(raw: unknown): SavedWindow | null {
     maximized: Boolean(raw.maximized),
     z: finite(raw.z, 1),
     restore: normalizeRect(raw.restore),
+    screens: normalizeScreens(raw.screens),
   }
+  return saved
+}
+
+function normalizeScreens(raw: unknown): PersistedScreen[] {
+  if (!Array.isArray(raw)) return []
+  const screens: PersistedScreen[] = []
+  for (const item of raw) {
+    if (!isObject(item) || typeof item.id !== 'string' || typeof item.viewId !== 'string' || !item.viewId) continue
+    screens.push({
+      id: item.id,
+      title: typeof item.title === 'string' && item.title ? item.title : 'Page',
+      viewId: item.viewId,
+      intent: typeof item.intent === 'string' ? item.intent : undefined,
+      params: item.params,
+      context: item.context,
+    })
+    if (screens.length >= 24) break
+  }
+  return screens
 }
 
 function normalizeRect(raw: unknown): SavedRect | null {

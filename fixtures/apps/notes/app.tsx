@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   EmptyState,
+  IconButton,
   Input,
   List,
   ListItem,
+  Row,
   ScrollArea,
+  SearchField,
   SplitView,
   Stack,
+  Text,
   TextArea,
+  formatters,
   useHotkey,
   useMenu,
   useStorage,
@@ -105,7 +110,11 @@ export default function App() {
         sidebarWidth={232}
         sidebar={
           <Stack gap={8} style={{ height: '100%', padding: 10 }}>
-            <Input value={query} onChange={setQuery} placeholder="Search" aria-label="Search notes" />
+            <Row justify="space-between">
+              <Text>Notes</Text>
+              <IconButton icon="Plus" label="New note" size="sm" onClick={createNote} />
+            </Row>
+            <SearchField value={query} onChange={setQuery} onSearch={setQuery} placeholder="Search" aria-label="Search notes" />
             <ScrollArea style={{ flex: 1 }}>
               {filtered.length === 0 ? (
                 <EmptyState icon="Search" title={query ? 'No matches' : 'No notes'} body={query ? 'Try a different word.' : 'Create one from the Note menu.'} />
@@ -116,7 +125,7 @@ export default function App() {
                       key={note.id}
                       title={note.title.trim() || 'New note'}
                       subtitle={preview(note.body) || 'Empty'}
-                      trailing={<span style={{ color: 'var(--slop-fg-subtle)', fontSize: 11 }}>{ago(note.updatedAt)}</span>}
+                      trailing={<span style={{ color: 'var(--slop-fg-subtle)', fontSize: 11 }}>{formatters.relative(note.updatedAt)}</span>}
                       selected={note.id === selectedId}
                       onClick={() => setSelectedId(note.id)}
                     />
@@ -142,12 +151,4 @@ export default function App() {
 
 function preview(body: string): string {
   return body.replace(/\s+/g, ' ').trim()
-}
-
-function ago(ts: number): string {
-  const seconds = Math.max(0, (Date.now() - ts) / 1000)
-  if (seconds < 60) return 'Now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }

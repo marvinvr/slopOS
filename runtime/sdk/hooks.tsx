@@ -43,44 +43,115 @@ export const storage = {
 
 export function useStorage<T>(key: string, initial: T): [T, (value: T | ((prev: T) => T)) => void, { loaded: boolean }] {
   const [value, setValue] = useState<T>(initial)
-  const [loaded, setLoaded] = useState(false)
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const initialRef = useRef(initial)
   initialRef.current = initial
+  const dirty = useRef(false)
+  const queued = useRef(false)
+  const pending = useRef<T>(initial)
+  const timer = useRef<number | null>(null)
+
+  const flush = useCallback((storageKey: string) => {
+    if (timer.current != null) {
+      window.clearTimeout(timer.current)
+      timer.current = null
+    }
+    if (!queued.current) return
+    queued.current = false
+    void storage.set(storageKey, pending.current)
+  }, [])
 
   useEffect(() => {
     let cancel = false
-    setLoaded(false)
+    dirty.current = false
     storage
       .get<T>(key)
       .then((stored) => {
         if (cancel) return
-        setValue(stored === undefined ? initialRef.current : stored)
-        setLoaded(true)
+        if (!dirty.current) {
+          const next = stored === undefined ? initialRef.current : stored
+          pending.current = next
+          setValue(next)
+        }
+        setLoadedKey(key)
       })
       .catch(() => {
-        if (!cancel) setLoaded(true)
+        if (!cancel) setLoadedKey(key)
       })
     return () => {
       cancel = true
+      flush(key)
     }
-  }, [key])
+  }, [key, flush])
 
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
       setValue((prev) => {
         const resolved = typeof next === 'function' ? (next as (prev: T) => T)(prev) : next
-        void storage.set(key, resolved)
+        dirty.current = true
+        queued.current = true
+        pending.current = resolved
+        if (timer.current != null) window.clearTimeout(timer.current)
+        timer.current = window.setTimeout(() => {
+          timer.current = null
+          if (!queued.current) return
+          queued.current = false
+          void storage.set(key, resolved)
+        }, 280)
         return resolved
       })
     },
     [key],
   )
 
-  return [value, set, { loaded }]
+  return [value, set, { loaded: loadedKey === key }]
 }
 
 export function notify(title: string, body?: string): void {
   send('notify', { title, body })
+}
+
+/** Focus an installed app, opening a window when none is open. Unknown ids do nothing. */
+export function openApp(id: string): void {
+  send('openApp', { appId: id })
+}
+
+export const clipboard = {
+  async write(text: string): Promise<void> {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        return
+      }
+    } catch {
+      // The sandboxed frame often cannot touch the clipboard. The host can.
+    }
+    const reply = await rpc<{ error?: string }>('clipboard.write', { text })
+    if (reply.error) throw new Error(reply.error)
+  },
+}
+
+/** Ask the host to download a file. `data` is text, or a small Blob. */
+export async function download(filename: string, data: string | Blob): Promise<void> {
+  const name = filename.replace(/[/\\]/g, '').trim() || 'download'
+  if (typeof data === 'string') {
+    const reply = await rpc<{ error?: string }>('download', { filename: name, data, encoding: 'utf8', mime: 'text/plain;charset=utf-8' })
+    if (reply.error) throw new Error(reply.error)
+    return
+  }
+  const bytes = new Uint8Array(await data.arrayBuffer())
+  let binary = ''
+  const step = 0x8000
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step))
+  }
+  const reply = await rpc<{ error?: string }>('download', {
+    filename: name,
+    data: btoa(binary),
+    encoding: 'base64',
+    mime: data.type || 'application/octet-stream',
+  })
+  if (reply.error) throw new Error(reply.error)
 }
 
 type FetchReply = { status: number; headers?: Record<string, string>; body?: string; error?: string }
@@ -179,6 +250,7 @@ export function useHotkey(combo: string, fn: () => void): void {
     const parsed = parseCombo(combo)
     const onKey = (event: KeyboardEvent) => {
       if (!matchCombo(event, parsed)) return
+      if (isTyping(event) && !parsed.mod && !parsed.alt && parsed.key !== 'escape') return
       event.preventDefault()
       ref.current()
     }
@@ -190,11 +262,20 @@ export function useHotkey(combo: string, fn: () => void): void {
 function parseCombo(combo: string): Combo {
   const parts = combo.toLowerCase().split('+').map((part) => part.trim()).filter(Boolean)
   const raw = parts.filter((part) => part !== 'mod' && part !== 'meta' && part !== 'cmd' && part !== 'ctrl' && part !== 'shift' && part !== 'alt')[0] ?? ''
+  const aliases: Record<string, string> = {
+    space: ' ',
+    esc: 'escape',
+    return: 'enter',
+    left: 'arrowleft',
+    right: 'arrowright',
+    up: 'arrowup',
+    down: 'arrowdown',
+  }
   return {
     mod: parts.some((part) => part === 'mod' || part === 'meta' || part === 'cmd' || part === 'ctrl'),
     shift: parts.includes('shift'),
     alt: parts.includes('alt'),
-    key: raw === 'space' ? ' ' : raw,
+    key: aliases[raw] ?? raw,
   }
 }
 
@@ -203,5 +284,12 @@ function matchCombo(event: KeyboardEvent, combo: Combo): boolean {
   if (combo.mod !== mod) return false
   if (combo.shift !== event.shiftKey) return false
   if (combo.alt !== event.altKey) return false
-  return event.key.toLowerCase() === combo.key
+  return event.key.toLowerCase() === combo.key || event.code.toLowerCase() === combo.key
+}
+
+function isTyping(event: KeyboardEvent): boolean {
+  const target = event.target
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
 }

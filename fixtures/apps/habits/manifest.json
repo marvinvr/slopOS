@@ -1,0 +1,11 @@
+{
+  "id": "habits",
+  "name": "Habits",
+  "icon": "ListChecks",
+  "description": "A small table of things you meant to repeat.",
+  "tint": "#2f9e6b",
+  "window": { "width": 720, "height": 520, "minWidth": 480, "minHeight": 360, "resizable": true },
+  "version": 1,
+  "createdAt": "2026-10-29T00:00:00.000Z",
+  "updatedAt": "2026-10-29T00:00:00.000Z"
+}

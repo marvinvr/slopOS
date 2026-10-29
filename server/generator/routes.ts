@@ -69,6 +69,8 @@ export function registerGeneratorRoutes(router: Router): void {
   router.post('/api/apps/:id/revert', async (ctx) => {
     const id = ctx.params.id
     if (!valid(id)) return sendJson(ctx.res, 400, { error: 'invalid id' })
+    const denied = await fixtureBlock(id)
+    if (denied) return sendJson(ctx.res, denied, { error: denied === 404 ? 'not found' : 'fixtures cannot be edited' })
     const body = await objectBody(ctx)
     if (!body) return
     const version = typeof body.version === 'number' ? body.version : Number.NaN

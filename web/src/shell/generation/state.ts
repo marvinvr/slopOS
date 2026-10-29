@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { useShell } from '../store'
-import { fetchJobs, postCancel, postEdit, postFix, postGenerate, postRegenerate, type GenResult, type JobInfo } from './api'
+import { fetchJobs, postCancel, postEdit, postFix, postGenerate, postRegenerate, postRevert, type GenResult, type JobInfo } from './api'
 
 export type GrokStatus = {
   available: boolean
@@ -183,6 +183,22 @@ export function fixApp(appId: string, error: string): void {
       useShell.getState().pushToast('Could not start a fix', err instanceof Error ? err.message : 'failed')
     }
   })()
+}
+
+export async function restoreAppVersion(appId: string, version: number): Promise<void> {
+  await postRevert(appId, version)
+  await useShell.getState().refreshApps()
+  const app = useShell.getState().apps.find((item) => item.id === appId)
+  const next = app?.version ?? version
+  useShell.setState((state) => {
+    const windowErrors = { ...state.windowErrors }
+    const windows = state.windows.map((win) => {
+      if (win.appId !== appId) return win
+      delete windowErrors[win.id]
+      return { ...win, version: next, title: app?.name || win.title }
+    })
+    return { windows, windowErrors }
+  })
 }
 
 export async function openGenerated(result: Extract<GenResult, { kind: 'app' }>, markFresh: boolean): Promise<void> {

@@ -47,8 +47,10 @@ export function isForwardedShortcut(event: KeyboardEvent): boolean {
   const key = event.key.toLowerCase()
   const mod = event.metaKey || event.ctrlKey
   if (!mod) return false
-  // Pass A toggles full screen. Both chords, so a browser that eats one still delivers the other.
+  // Full screen: Shift+F, and Ctrl+Cmd+F when the browser delivers it.
   if (key === 'f' && (event.shiftKey || (event.metaKey && event.ctrlKey))) return true
+  // App drawer. Checked before the shift bail-out below.
+  if (event.shiftKey && (key === 'a' || event.code === 'KeyA')) return true
   if (event.shiftKey) return false
   return key === 'w' || key === 'm' || key === 'k' || key === ' ' || event.code === 'Space' || event.key === '`' || event.code === 'Backquote'
 }
@@ -61,6 +63,7 @@ export function shortcutPayload(event: KeyboardEvent) {
     ctrlKey: event.ctrlKey,
     shiftKey: event.shiftKey,
     altKey: event.altKey,
+    repeat: event.repeat,
   }
 }
 

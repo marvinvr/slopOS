@@ -1,15 +1,19 @@
-import { useEffect } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import { applyTheme, resolveTheme } from '../design/theme'
+import { cycleWallpaper, toggleDarkMode } from './actions'
 import { Dock } from './dock/Dock'
+import { ShellDialogs } from './dialogs/Dialogs'
 import { AboutDialog } from './menu/AboutDialog'
 import { Drawer } from './drawer'
 import { Invite } from './empty/Invite'
 import { MenuBar } from './menu/MenuBar'
+import { ContextMenu, type MenuNode } from './menu/MenuList'
 import { useShellShortcuts } from './shortcuts'
 import { Spotlight } from './spotlight'
 import { bootShell, useShell } from './store'
 import { Toasts } from './toasts/Toasts'
 import { Wallpaper } from './wallpaper/Wallpaper'
+import { Welcome } from './welcome/Welcome'
 import { WindowManager } from './window/WindowManager'
 
 export function Desktop() {
@@ -19,6 +23,7 @@ export function Desktop() {
   const theme = useShell((state) => state.theme)
   const accent = useShell((state) => state.accent)
   useShellShortcuts()
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     void bootShell()
@@ -44,8 +49,32 @@ export function Desktop() {
     return () => media.removeEventListener('change', onChange)
   }, [theme, accent])
 
+  function onContextMenu(event: MouseEvent) {
+    const target = event.target as HTMLElement
+    if (target.closest('.shell-window, .shell-dock, .shell-menubar, .shell-backdrop, .shell-about, .shell-toast, .shell-menu-pop, .shell-welcome, .shell-confirm, .shell-confirm-backdrop')) {
+      return
+    }
+    event.preventDefault()
+    setMenu({ x: event.clientX, y: event.clientY })
+  }
+
+  const items: MenuNode[] = [
+    { type: 'item', label: 'Show All Apps', onSelect: () => useShell.getState().setDrawerOpen(true) },
+    {
+      type: 'item',
+      label: 'New App with Grok…',
+      onSelect: () => {
+        const shell = useShell.getState()
+        shell.setDrawerPrompt(true)
+        shell.setDrawerOpen(true)
+      },
+    },
+    { type: 'item', label: 'Change Wallpaper', onSelect: cycleWallpaper },
+    { type: 'item', label: 'Toggle Dark Mode', onSelect: toggleDarkMode },
+  ]
+
   return (
-    <div className={interacting ? 'shell-desktop is-interacting' : 'shell-desktop'}>
+    <div className={interacting ? 'shell-desktop is-interacting' : 'shell-desktop'} onContextMenu={onContextMenu}>
       <Wallpaper />
       {loaded && apps.length === 0 ? <Invite /> : null}
       <WindowManager />
@@ -55,6 +84,9 @@ export function Desktop() {
       <Spotlight />
       <Drawer />
       <AboutDialog />
+      <ShellDialogs />
+      <Welcome />
+      {menu ? <ContextMenu x={menu.x} y={menu.y} items={items} onClose={() => setMenu(null)} /> : null}
     </div>
   )
 }

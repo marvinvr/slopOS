@@ -1,7 +1,8 @@
 import { nanoid } from 'nanoid'
 import { create } from 'zustand'
-import type { WireMenu } from '../../../runtime/protocol'
+import type { PersistedScreen, WireMenu } from '../../../runtime/protocol'
 import { MENU_H, workArea } from './metrics'
+import { wallpaperId } from './wallpaper/wallpapers'
 import { resolveTheme, type ThemeMode } from '../design/theme'
 import type { AppManifest, Rect, ThemeSetting } from './types'
 
@@ -23,9 +24,12 @@ export type Win = {
   z: number
   phase: WinPhase
   version: number
+  screens: PersistedScreen[]
 }
 
-export type Toast = { id: string; title: string; body?: string }
+export type Toast = { id: string; title: string; body?: string; appId?: string }
+
+export type ShellPrompt = null | { kind: 'reset' } | { kind: 'delete'; appId: string } | { kind: 'history'; appId: string }
 export type WindowError = { message: string; stack?: string }
 
 type SettingsPayload = {
@@ -33,7 +37,7 @@ type SettingsPayload = {
   accent?: string
   wallpaper?: string
   dockPins?: string[]
-  windows?: Array<Rect & { id: string; appId: string; minimized?: boolean; maximized?: boolean; z?: number; restore?: Rect | null }>
+  windows?: Array<Rect & { id: string; appId: string; minimized?: boolean; maximized?: boolean; z?: number; restore?: Rect | null; screens?: PersistedScreen[] }>
   focusedWindowId?: string | null
 }
 
@@ -51,10 +55,13 @@ type State = {
   windowErrors: Record<string, WindowError>
   aboutOpen: boolean
   drawerOpen: boolean
+  drawerPrompt: boolean
   spotlightOpen: boolean
   interacting: boolean
   loaded: boolean
   zCounter: number
+  pulse: { id: string; n: number } | null
+  shellPrompt: ShellPrompt
 }
 
 type Actions = {
@@ -72,16 +79,25 @@ type Actions = {
   refitMaximized: () => void
   setTitle: (id: string, title: string) => void
   setMenus: (id: string, menus: WireMenu[]) => void
+  setWindowScreens: (id: string, screens: PersistedScreen[]) => void
   setWindowError: (id: string, error: WindowError | null) => void
-  pushToast: (title: string, body?: string) => void
+  pushToast: (title: string, body?: string, appId?: string) => void
   dismissToast: (id: string) => void
   setTheme: (theme: ThemeSetting) => void
   setAccent: (accent: string) => void
+  setWallpaper: (wallpaper: string) => void
+  setDockPins: (dockPins: string[]) => void
+  toggleDockPin: (appId: string) => void
   setAboutOpen: (open: boolean) => void
   setDrawerOpen: (open: boolean) => void
+  setDrawerPrompt: (open: boolean) => void
   setSpotlightOpen: (open: boolean) => void
   setInteracting: (interacting: boolean) => void
+  setShellPrompt: (prompt: ShellPrompt) => void
   cycleWindows: () => void
+  closeApp: (appId: string) => void
+  closeAllWindows: () => void
+  forgetApp: (appId: string) => void
 }
 
 export const useShell = create<State & Actions>((set, get) => ({
@@ -98,10 +114,13 @@ export const useShell = create<State & Actions>((set, get) => ({
   windowErrors: {},
   aboutOpen: false,
   drawerOpen: false,
+  drawerPrompt: false,
   spotlightOpen: false,
   interacting: false,
   loaded: false,
   zCounter: 1,
+  pulse: null,
+  shellPrompt: null,
 
   hydrate: (apps, settings) => {
     const windows = (settings.windows ?? [])
@@ -118,7 +137,7 @@ export const useShell = create<State & Actions>((set, get) => ({
       focusedWindowId: focused,
       theme: settings.theme ?? 'auto',
       accent: settings.accent || '#e4532d',
-      wallpaper: settings.wallpaper || 'mesh',
+      wallpaper: wallpaperId(settings.wallpaper || 'mesh'),
       dockPins: settings.dockPins ?? [],
       zCounter,
       loaded: true,
@@ -133,14 +152,18 @@ export const useShell = create<State & Actions>((set, get) => ({
   },
 
   openApp: (appId) => {
+    bumpPulse(appId)
     const { windows } = get()
     const existing = windows.filter((win) => win.appId === appId && win.phase !== 'closing')
     if (!existing.length) {
       get().newWindow(appId)
       return
     }
-    const top = [...existing].sort((a, b) => b.z - a.z)[0]
+    const open = existing.filter((win) => win.phase === 'open')
+    const pool = open.length ? open : existing
+    const top = [...pool].sort((a, b) => b.z - a.z)[0]
     get().focusWindow(top.id)
+    set({ drawerOpen: false, spotlightOpen: false })
   },
 
   newWindow: (appId) => {
@@ -169,7 +192,9 @@ export const useShell = create<State & Actions>((set, get) => ({
       z,
       phase: 'open',
       version: app.version,
+      screens: [],
     }
+    bumpPulse(appId)
     set((state) => ({ windows: [...state.windows, win], focusedWindowId: win.id, zCounter: z, drawerOpen: false, spotlightOpen: false }))
     scheduleSave()
   },
@@ -275,6 +300,15 @@ export const useShell = create<State & Actions>((set, get) => ({
 
   setMenus: (id, menus) => set((state) => ({ appMenus: { ...state.appMenus, [id]: menus } })),
 
+  setWindowScreens: (id, screens) => {
+    const current = get().windows.find((win) => win.id === id)
+    if (!current || JSON.stringify(current.screens) === JSON.stringify(screens)) return
+    set((state) => ({
+      windows: state.windows.map((win) => (win.id === id ? { ...win, screens } : win)),
+    }))
+    scheduleSave()
+  },
+
   setWindowError: (id, error) =>
     set((state) => {
       const windowErrors = { ...state.windowErrors }
@@ -283,9 +317,9 @@ export const useShell = create<State & Actions>((set, get) => ({
       return { windowErrors }
     }),
 
-  pushToast: (title, body) => {
-    const toast: Toast = { id: nanoid(8), title, body }
-    set((state) => ({ toasts: [...state.toasts.slice(-3), toast] }))
+  pushToast: (title, body, appId) => {
+    const toast: Toast = { id: nanoid(8), title, body, appId }
+    set((state) => ({ toasts: [toast, ...state.toasts].slice(0, 4) }))
   },
 
   dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),
@@ -300,10 +334,67 @@ export const useShell = create<State & Actions>((set, get) => ({
     scheduleSave()
   },
 
+  setWallpaper: (wallpaper) => {
+    set({ wallpaper })
+    scheduleSave()
+  },
+
+  setDockPins: (dockPins) => {
+    set({ dockPins })
+    scheduleSave()
+  },
+
+  toggleDockPin: (appId) => {
+    const pins = get().dockPins
+    const dockPins = pins.includes(appId) ? pins.filter((id) => id !== appId) : [...pins, appId]
+    set({ dockPins })
+    scheduleSave()
+  },
+
   setAboutOpen: (aboutOpen) => set({ aboutOpen }),
   setDrawerOpen: (drawerOpen) => set({ drawerOpen, spotlightOpen: drawerOpen ? false : get().spotlightOpen }),
+  setDrawerPrompt: (drawerPrompt) => set({ drawerPrompt }),
   setSpotlightOpen: (spotlightOpen) => set({ spotlightOpen, drawerOpen: spotlightOpen ? false : get().drawerOpen }),
   setInteracting: (interacting) => set({ interacting }),
+  setShellPrompt: (shellPrompt) => set({ shellPrompt }),
+
+  closeApp: (appId) => {
+    set((state) => ({
+      windows: state.windows.map((win) => (win.appId === appId && win.phase !== 'closing' ? { ...win, phase: 'closing' } : win)),
+    }))
+  },
+
+  closeAllWindows: () => {
+    set((state) => ({
+      windows: state.windows.map((win) => (win.phase === 'closing' ? win : { ...win, phase: 'closing' })),
+    }))
+  },
+
+  forgetApp: (appId) => {
+    set((state) => {
+      const windows = state.windows.filter((win) => win.appId !== appId)
+      const appMenus = { ...state.appMenus }
+      const windowErrors = { ...state.windowErrors }
+      for (const win of state.windows) {
+        if (win.appId !== appId) continue
+        delete appMenus[win.id]
+        delete windowErrors[win.id]
+      }
+      const focusedStillOpen = windows.some((win) => win.id === state.focusedWindowId && win.phase === 'open')
+      const focusedWindowId = focusedStillOpen
+        ? state.focusedWindowId
+        : windows.filter((win) => win.phase === 'open').sort((a, b) => b.z - a.z)[0]?.id ?? null
+      return {
+        windows,
+        appMenus,
+        windowErrors,
+        focusedWindowId,
+        apps: state.apps.filter((app) => app.id !== appId),
+        dockPins: state.dockPins.filter((id) => id !== appId),
+      }
+    })
+    scheduleSave()
+  },
 
   cycleWindows: () => {
     const { windows, focusedWindowId, zCounter } = get()
@@ -350,6 +441,7 @@ function scheduleSave(): void {
           maximized: win.maximized,
           z: win.z,
           restore: win.restore,
+          screens: win.screens,
         })),
     }
     void fetch('/api/settings', {
@@ -377,7 +469,15 @@ function windowFromSaved(saved: NonNullable<SettingsPayload['windows']>[number],
     z: saved.z ?? 1,
     phase: saved.minimized ? 'minimized' : 'open',
     version: app.version,
+    screens: Array.isArray(saved.screens) ? saved.screens : [],
   }
+}
+
+let pulseSerial = 0
+
+function bumpPulse(appId: string): void {
+  pulseSerial += 1
+  useShell.setState({ pulse: { id: appId, n: pulseSerial } })
 }
 
 function clamp(value: number, min: number, max: number): number {

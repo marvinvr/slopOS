@@ -148,12 +148,17 @@ useTheme(): { mode: 'light' | 'dark'; accent: string }
 slopFetch(url: string, init?: RequestInit): Promise<Response>   // via server proxy /api/proxy (GET/POST, size/time limited)
 useMenu(menus: { label: string; items: ({ label: string; shortcut?: string; disabled?: boolean; onSelect: () => void } | 'separator')[] }[]): void
                                                        // shows app menus in the shell menu bar while focused
-useInterval(fn, ms), useHotkey(combo: string, fn)    // tiny helpers
+useInterval(fn, ms), useHotkey(combo: string, fn), useNow(intervalMs?)
+formatters.date / .time / .relative / .number
+openApp(id), clipboard.write(text), download(filename, data), confirm(message): Promise<boolean>
+// generative world — see "The infinite world"
+generate, useGenerated, <GenerativeView>, openGenerative, useGenContext, useScreens
 // component kit (styled with tokens, look native)
 Button (variant: 'primary'|'secondary'|'ghost'|'danger', size: 'sm'|'md'), IconButton, Input, TextArea, Select,
-Checkbox, Switch, Slider, Card, List + ListItem (selectable, with icon/subtitle/trailing), Tabs, Toolbar,
-Sidebar layout (SplitView), Stack (vertical, gap) + Row (horizontal, gap, align), Heading, Text (muted/size),
-Badge, Divider, EmptyState, Spinner, Kbd, ScrollArea, Icon (name = lucide icon name, size)
+Checkbox, Switch, Slider, SearchField, NumberInput (Stepper), SegmentedControl, ColorSwatch, ProgressBar,
+Card, List + ListItem, Tabs, Link, Toolbar, SplitView (optional resizable), Stack, Row, Grid, Section, Field,
+Heading, Text, Badge, Tag, Chip, Avatar, Table, Tooltip, Menu (DropdownMenu), Dialog, Sheet,
+Divider, EmptyState, Spinner, Kbd, ScrollArea, Icon (name = lucide icon name, size)
 ```
 
 The component kit source lives in `web/src/design/kit/` and is consumed by BOTH the shell and the runtime,
@@ -340,6 +345,8 @@ Small deviations from the paragraphs above, recorded so later passes don't trip 
 - Per-kind model and effort: `SLOPOS_<P>_MODEL_<KIND>` and `SLOPOS_<P>_EFFORT_<KIND>`. For grok, content and route stay on the faster built-in default unless that kind override is set. Codex and claude omit `-m` / `model` when the model is unset, so the CLI's own default is used.
 - Fixture apps under `fixtures/apps/` load only when `SLOPOS_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
 - The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.
+- Each saved window may also carry `screens`: the in-window stack (`{ id, title, viewId, intent?, params?, context? }[]`), written by the app via `screens.state` and restored into the iframe on `ready`.
+- `POST /api/gen`, `GET /api/jobs/:id/events`, and `GET /api/apps/:id/views/:viewId/bundle.js` are served by `server/generator/`. A cached hit is `{ cached: true, result }`; otherwise the response is `{ jobId }` and the job SSE ends with `{ type: 'done', result }`. Mock generations use `SLOPOS_GENERATOR=mock`. There is no `SLOPOS_GROK_MOCK` switch.
 
 ### Full screen ("jump into slopOS")
 - Browser Fullscreen API on `document.documentElement`. Toggle from the logo menu ("Enter Full Screen" / "Exit Full

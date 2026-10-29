@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Heading, Icon, Row, Stack, Text, TextArea } from '../../design/kit'
-import { postRevert } from './api'
-import { closeEdit, submitEdit } from './state'
+import { closeEdit, restoreAppVersion, submitEdit } from './state'
 import { useShell } from '../store'
 
 type HistoryEntry = { at: string; prompt: string; kind?: string; version?: number }
 
 export function EditDialog({ appId }: { appId: string }) {
   const app = useShell((state) => state.apps.find((item) => item.id === appId))
-  const refreshApps = useShell((state) => state.refreshApps)
   const [prompt, setPrompt] = useState('')
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [busy, setBusy] = useState(false)
@@ -37,8 +35,7 @@ export function EditDialog({ appId }: { appId: string }) {
     setBusy(true)
     setError('')
     try {
-      await postRevert(appId, version)
-      await refreshApps()
+      await restoreAppVersion(appId, version)
       closeEdit()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not revert')

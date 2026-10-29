@@ -1,7 +1,11 @@
+import { useShell } from '../store'
+import { wallpaperId } from './wallpapers'
+
 /** Warm mesh. Light and dark are separate palettes; the blobs stay soft. */
 export function Wallpaper() {
+  const wallpaper = useShell((state) => state.wallpaper)
   return (
-    <div className="shell-wallpaper" aria-hidden>
+    <div className="shell-wallpaper" data-wallpaper={wallpaperId(wallpaper)} aria-hidden>
       <svg className="shell-blobs" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
         <ellipse className="b1" cx="160" cy="150" rx="320" ry="220" />
         <ellipse className="b2" cx="1040" cy="90" rx="280" ry="190" />

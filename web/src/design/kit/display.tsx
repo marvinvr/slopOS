@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { cx } from './cx'
+import { useGenerative } from './generative'
 import { Icon } from './Icon'
 
 type Box = { className?: string; style?: CSSProperties; children?: ReactNode }
@@ -82,20 +83,26 @@ export type ListItemProps = {
   subtitle?: string
   trailing?: ReactNode
   selected?: boolean
+  disabled?: boolean
+  /** Used when `onClick` is omitted. Defaults to `title`. */
+  intent?: string
   onClick?: () => void
   className?: string
   style?: CSSProperties
 }
-export function ListItem({ icon, title, subtitle, trailing, selected, onClick, className, style }: ListItemProps) {
+export function ListItem({ icon, title, subtitle, trailing, selected, disabled, intent, onClick, className, style }: ListItemProps) {
+  const gen = useGenerative({ onClick, disabled, intent, label: title })
   return (
     <li>
       <button
         type="button"
-        className={cx('slop-list-item', className)}
+        className={cx('slop-list-item', gen.generative && 'slop-generative', gen.busy && 'is-busy', className)}
         style={style}
         role="option"
         aria-selected={Boolean(selected)}
-        onClick={onClick}
+        aria-busy={gen.busy || undefined}
+        disabled={disabled}
+        onClick={gen.onClick}
       >
         {icon ? (
           <span className="slop-list-icon">

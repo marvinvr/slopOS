@@ -8,7 +8,8 @@
     "start": "npm run build && node dist/server/index.js",
     "dev": "vite build --config vite.runtime.config.ts && concurrently -k -n runtime,server,web -c gray,cyan,magenta \"vite build --config vite.runtime.config.ts --watch\" \"PORT=4748 tsx watch server/index.ts\" \"vite --config vite.config.ts\"",
     "typecheck": "tsc --noEmit",
-    "test:gen": "tsx scripts/test-generation.ts"
+    "test:gen": "tsx scripts/test-generation.ts",
+    "check:fixtures": "tsx scripts/check-fixtures.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^2.1.0",

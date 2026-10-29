@@ -3,7 +3,7 @@ import { startGeneration } from '../generation'
 import { Mark } from '../icons'
 import { EXAMPLE_PROMPTS } from './examples'
 
-export function Invite({ embedded = false }: { embedded?: boolean }) {
+export function Invite({ embedded = false, onPick }: { embedded?: boolean; onPick?: () => void }) {
   return (
     <div className={cx('shell-invite', embedded && 'is-embedded')}>
       <div className="shell-invite-card">
@@ -14,7 +14,15 @@ export function Invite({ embedded = false }: { embedded?: boolean }) {
         <p>Every app on this desk is written by Grok. Describe one, and it will live here.</p>
         <div className="shell-chips">
           {EXAMPLE_PROMPTS.map((example) => (
-            <button key={example.label} type="button" className="shell-chip" onClick={() => startGeneration(example.prompt)}>
+            <button
+              key={example.label}
+              type="button"
+              className="shell-chip"
+              onClick={() => {
+                startGeneration(example.prompt)
+                onPick?.()
+              }}
+            >
               {example.label}
             </button>
           ))}
