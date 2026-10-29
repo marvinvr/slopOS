@@ -1,0 +1,70 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--slop-bg);
+  color: var(--slop-fg);
+  font-family: var(--slop-font);
+  font-size: var(--slop-text-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+.slop-app-root {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.slop-frame-loading,
+.slop-frame-error {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--slop-space-2);
+  padding: var(--slop-space-6);
+  text-align: center;
+  color: var(--slop-fg-muted);
+}
+
+.slop-frame-error h1 {
+  margin: 0;
+  font-size: var(--slop-text-lg);
+  font-weight: 600;
+  color: var(--slop-fg);
+  letter-spacing: -0.02em;
+}
+
+.slop-frame-error p {
+  margin: 0;
+  max-width: 420px;
+}
+
+.slop-frame-error details {
+  max-width: min(520px, 100%);
+  text-align: left;
+}
+
+.slop-frame-error pre {
+  margin: var(--slop-space-2) 0 0;
+  padding: var(--slop-space-3);
+  border-radius: var(--slop-radius-md);
+  background: var(--slop-bg-sunken);
+  color: var(--slop-fg-muted);
+  font-family: var(--slop-font-mono);
+  font-size: var(--slop-text-xs);
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 180px;
+}

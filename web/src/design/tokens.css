@@ -1,0 +1,87 @@
+/* slopOS design tokens. Names are the contract — apps and the shell both read these. */
+
+:root {
+  color-scheme: light;
+  --slop-font: "Inter Variable", "Inter", system-ui, sans-serif;
+  --slop-font-display: "Fraunces Variable", "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+  --slop-font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+
+  --slop-text-xs: 11px;
+  --slop-text-sm: 12px;
+  --slop-text-md: 13px;
+  --slop-text-lg: 15px;
+  --slop-text-xl: 20px;
+  --slop-text-2xl: 28px;
+
+  --slop-radius-sm: 6px;
+  --slop-radius-md: 8px;
+  --slop-radius-lg: 12px;
+  --slop-radius-xl: 14px;
+
+  --slop-space-1: 4px;
+  --slop-space-2: 8px;
+  --slop-space-3: 12px;
+  --slop-space-4: 16px;
+  --slop-space-5: 20px;
+  --slop-space-6: 24px;
+  --slop-space-8: 32px;
+
+  --slop-bg: #f6f4f0;
+  --slop-bg-elevated: #fffcf8;
+  --slop-bg-sunken: #ece8e1;
+  --slop-fg: #1f1d1a;
+  --slop-fg-muted: #5e5952;
+  --slop-fg-subtle: #8a837a;
+  --slop-border: rgba(31, 29, 26, 0.1);
+  --slop-accent: #e4532d;
+  --slop-accent-fg: #ffffff;
+  --slop-accent-soft: rgba(228, 83, 45, 0.14);
+  --slop-danger: #d13b3b;
+  --slop-danger-soft: rgba(209, 59, 59, 0.12);
+  --slop-success: #1c8a4b;
+  --slop-success-soft: rgba(28, 138, 75, 0.12);
+  --slop-warning: #a86b00;
+  --slop-warning-soft: rgba(168, 107, 0, 0.14);
+  --slop-shadow-sm: 0 1px 2px rgba(40, 36, 30, 0.06);
+  --slop-shadow-md: 0 10px 28px rgba(40, 36, 30, 0.1);
+  --slop-shadow-lg: 0 22px 56px rgba(40, 36, 30, 0.16), 0 2px 8px rgba(40, 36, 30, 0.05);
+  --slop-chrome-bg: rgba(255, 252, 248, 0.72);
+  --slop-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --slop-dur-fast: 120ms;
+  --slop-dur: 180ms;
+
+  font-family: var(--slop-font);
+  font-size: var(--slop-text-md);
+  color: var(--slop-fg);
+  background: var(--slop-bg);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --slop-bg: #1c1b19;
+  --slop-bg-elevated: #2a2826;
+  --slop-bg-sunken: #141312;
+  --slop-fg: #f4f1eb;
+  --slop-fg-muted: #c0b8ae;
+  --slop-fg-subtle: #8f877e;
+  --slop-border: rgba(255, 248, 240, 0.1);
+  --slop-accent: #ff7a4d;
+  --slop-accent-fg: #1c1b19;
+  --slop-accent-soft: rgba(255, 122, 77, 0.18);
+  --slop-danger: #f08a82;
+  --slop-danger-soft: rgba(240, 138, 130, 0.16);
+  --slop-success: #6dca90;
+  --slop-success-soft: rgba(109, 202, 144, 0.16);
+  --slop-warning: #e6b86a;
+  --slop-warning-soft: rgba(230, 184, 106, 0.16);
+  --slop-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --slop-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.38);
+  --slop-shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --slop-chrome-bg: rgba(38, 39, 43, 0.72);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
