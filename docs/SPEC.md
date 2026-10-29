@@ -216,3 +216,15 @@ Small deviations from the paragraphs above, recorded so later passes don't trip 
 - Generation routes (`/api/apps/generate`, edit, regenerate, fix, revert, `/api/jobs`, `/api/jobs/:id/events`) answer `501 { error: 'not implemented yet' }` from `server/grok/index.ts`. Health reports `{ available: false, reason: 'not implemented yet', model, effort }`. Pass C replaces that module.
 - Fixture apps under `fixtures/apps/` load only when `SLOP_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
 - The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.
+
+### Full screen ("jump into slopOS")
+- Browser Fullscreen API on `document.documentElement`. Toggle from the logo menu ("Enter Full Screen" / "Exit Full
+  Screen") and with Ctrl/Cmd+Shift+F (also Ctrl+Cmd+F on macOS if it reaches the page). Clean exit via Esc (native) or menu.
+- When entering, also call `navigator.keyboard.lock()` where supported (Chromium): then the page receives Esc,
+  Ctrl/Cmd+W, Ctrl+Tab etc., so Esc closes popovers/spotlight first and holding Esc (browser behaviour) exits full screen;
+  release the lock on exit. Without Keyboard Lock (Safari/Firefox) everything still works with Ctrl shortcuts.
+- First load: an inviting "Enter slopOS" moment — a calm full-viewport welcome over the blurred desktop (logo,
+  one line, primary "Enter slopOS" button that goes full screen, secondary "Stay in window" link). Shown once per
+  browser (remember the choice in localStorage); the logo menu can always enter full screen later.
+- Global shortcuts must work identically in full screen, including when focus is inside an app iframe (runtime forwards
+  them).
