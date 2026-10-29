@@ -190,6 +190,87 @@ GET/PUT /api/settings                     shell settings (theme, accent, wallpap
 - Mock mode for testing: `SLOP_GROK_MOCK=1` uses a fake runner that emits a realistic event stream and writes a
   canned app (and can simulate a compile error on attempt 1 to exercise the fix loop).
 
+## The infinite world (core architecture — see BRIEF.md › Core idea)
+
+slopOS is not "an app generator with a launcher". It is a world that materializes as you use it: every search bar
+and every button — in the shell AND inside generated apps — can lead to Grok generating what's behind it. Three
+generation **kinds**, one pipeline:
+
+| kind      | what Grok produces                                   | rendered where                                   | typical latency |
+|-----------|------------------------------------------------------|--------------------------------------------------|-----------------|
+| `app`     | a new app (App.tsx + manifest.json)                  | new window, appears in drawer/spotlight          | slowest         |
+| `view`    | a screen component (View.tsx) for an existing app    | pushed onto that window's screen stack, or inline | medium          |
+| `content` | JSON data matching a schema the caller supplies      | returned to the calling app code                  | fastest         |
+
+Plus `auto`: the caller only has an intent ("Open settings", "Show invoices for ACME", "Weather in Lisbon"); the server
+decides: an existing app that clearly fits → open it; the intent belongs inside the calling app → `view`; a different
+job entirely → `app`.
+
+### SDK surface (runtime, owned by pass B)
+
+```ts
+generate<T>(req: GenRequest): Promise<GenResult<T>>          // low-level
+type GenRequest = { intent: string; kind?: 'auto'|'app'|'view'|'content'; context?: unknown;
+                    schema?: object /* JSON schema, content only */; key?: string /* cache key override */; fresh?: boolean }
+type GenResult<T> = { kind: 'content'; data: T } | { kind: 'view'; viewId: string } | { kind: 'app'; appId: string }
+useGenerated<T>(req: GenRequest | null): { status: 'idle'|'loading'|'ready'|'error'; data?: T; error?: string;
+                                         progress?: string; regenerate(): void }   // content convenience
+<GenerativeView intent context? fallback? />   // renders a generated view inline (with materializing state)
+openGenerative({ intent, context? })           // auto: open existing app / push a generated screen / generate an app
+useGenContext(ctx: object)                      // what's on screen right now; attached to every generative request
+useScreens(): { push(viewId|{intent,context}), pop(), stack }   // in-window screen stack (persisted per window)
+```
+
+**Generative by default ("every button"):** kit `Button`, `ListItem`, `Link`/`Card` (clickable) WITHOUT an `onClick`/
+`onSelect` (and not disabled) are generative: clicking calls `openGenerative({ intent: props.intent ?? label, context })`
+where context = app id/name + current screen title + `useGenContext` data. `SearchField` without `onSearch` likewise
+generates a results screen for the query. Such elements carry a barely-there affordance (e.g. a tiny sparkle on hover)
+so generativity is discoverable but not noisy. The generation prompt tells Grok: implement what the app is about for
+real; for everything beyond that (secondary screens, settings, "more…", detail pages, links into other domains) leave
+the button handler-less or give it an explicit `intent` — never fake a stub or a "coming soon".
+
+Generated **views** use the app format with a different signature: `export default function View({ params, context })`
+(same import rules; they may use `useStorage` — storage is per app, so views share data with their app). They are
+compiled like apps and loaded by the runtime via dynamic `import()` of their bundle URL into the same iframe.
+
+**Materializing states** (tasteful, OS-like): a screen being generated shows the target title immediately with a soft
+shimmering skeleton + a one-line live status ("Sketching layout…" from the grok stream), never a spinner-only blank.
+Generative buttons show a subtle in-place progress. Generating apps show the GenerationActivity in the menu bar.
+
+### Host ⇄ app protocol additions
+
+`gen.request {requestId, req}` (app → host) · `gen.progress {requestId, status, text}` · `gen.result {requestId, result}` ·
+`gen.error {requestId, error}` (host → app) · `gen.open {intent, context}` (app → host, auto-routing done by host+server) ·
+`screens.state {stack}` (app → host, persisted with the window). The shell bridge forwards gen requests to the server
+and relays job events.
+
+### Server (owned by pass C)
+
+```
+POST /api/gen {appId?, windowId?, kind, intent, context, schema?, key?, fresh?}
+     → { cached: true, result } | { jobId }      (job SSE ends with { type:'done', result })
+GET  /api/apps/:id/views/:viewId/bundle.js        compiled generated view
+GET  /api/world                                   world digest (debug / shell)
+POST /api/reset {confirm: "RESET"}                wipe the whole generated world → pristine start
+```
+
+- **Cache & consistency:** every generation has a cache key = hash(appId | kind | normalized intent | stable hash of
+  `context.scope` if given) unless `key` is passed. Same key → same stored result, returned instantly (no regeneration
+  unless `fresh` or the user chooses Regenerate). In-flight identical requests are de-duplicated.
+- **World store** (`data/world/`): app summaries (name, purpose, data shapes it stores), entities Grok invented
+  (people, companies, places, products… with one-line descriptions and owning app), the generation log (intent → result),
+  and stored views/content. Every prompt gets a compact **world digest** (capped, most relevant first: the calling app's
+  summary + its views + related entities + other apps' names/purposes) so results are coherent with what exists.
+  After each generation Grok also writes `world.json` (entities/summary deltas) in its workspace; the server merges it.
+- **Models per kind** (env, defaults): app `grok-4.7`/medium, view `grok-4.7`/medium, content `grok-4.7-build-fast`/low
+  with `--json-schema` and no tools. Queue concurrency `SLOP_GROK_CONCURRENCY` (default 2), app jobs prioritized after
+  interactive view/content jobs only if they were started earlier (FIFO otherwise).
+- **Persistence = continue where you left off:** apps, views, content, world, app storage, open windows with geometry
+  and each window's screen stack all survive restarts and reloads.
+- **Reset slopOS:** logo menu → confirm dialog ("This erases every app and everything in this world") → `POST /api/reset`
+  → server wipes `data/` (apps, views, content, world, storage, workspaces, jobs, settings) → shell clears its
+  localStorage and reloads into the pristine first-run (incl. the "Enter slopOS" moment).
+
 ## Shell behaviour (summary)
 
 Menu bar (top): logo menu (About slopOS dialog, theme light/dark/auto, Restart shell, …), active app name (bold),
