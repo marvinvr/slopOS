@@ -15,10 +15,10 @@ npm run typecheck
 
 `npm start` must work from a clean checkout after `npm install`. Copy `.env.example` to `.env` if you want to override the port or Grok settings. Do not set `XAI_API_KEY` or `GROK_API_KEY`. slopOS uses the local `grok` subscription (pass C), never the xAI API.
 
-Hidden fixture apps (Notes and Hello) load only when `SLOP_FIXTURES=1`. They are for tests and screenshots, not the product.
+Hidden fixture apps (Notes and Hello) load only when `SLOPOS_FIXTURES=1`. They are for tests and screenshots, not the product.
 
 ```bash
-SLOP_FIXTURES=1 PORT=4790 node dist/server/index.js
+SLOPOS_FIXTURES=1 PORT=4790 node dist/server/index.js
 ```
 
 ## Layout
@@ -26,14 +26,14 @@ SLOP_FIXTURES=1 PORT=4790 node dist/server/index.js
 ```
 server/            HTTP server: shell, /runtime, /api
   apps/            registry, esbuild compile, per-app storage
-  grok/            generation stub — pass C replaces this
+  grok/            generation stub — pass C replaces this with server/generator/
 web/src/shell/     desktop, windows, menu bar, dock
   spotlight/       pass A
   drawer/          pass A (empty state + a minimal launcher already work)
   generation/      pass C seam: startGeneration, fixApp, …
 web/src/design/    tokens.css + the component kit
 runtime/           iframe bootstrap and @slop/sdk
-fixtures/apps/     hidden apps, loaded only with SLOP_FIXTURES=1
+fixtures/apps/     hidden apps, loaded only with SLOPOS_FIXTURES=1
 data/              generated apps, storage, settings (created at runtime, gitignored)
 docs/APP_SDK.md    app contract, also the generation prompt's reference
 docs/SPEC.md       engineering contract

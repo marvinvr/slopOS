@@ -11,21 +11,17 @@ export type GrokStatus = {
 }
 
 /**
- * Grok generation pipeline.
- * TODO(pass C): replace this stub with the grok CLI runner.
- * Own: availability probe (`grok` on PATH / SLOP_GROK_BIN), one-at-a-time job queue,
- * streaming SSE at GET /api/jobs/:id/events, generate / edit / regenerate / fix / revert,
- * workspace files under data/workspaces/<appId>/, and validation retries through
- * compileApp() in server/apps/compile.ts (up to 3 attempts).
- * Spawn `grok` headless. Strip XAI_API_KEY, GROK_API_KEY, and any xAI *_API_KEY from the
- * child env. Never call the xAI HTTP API and never set an API key.
+ * Generation stub.
+ * TODO(pass C): replace this module with a pluggable server/generator/
+ * (SLOPOS_GENERATOR, SLOPOS_GROK_BIN / SLOPOS_GROK_MODEL / SLOPOS_GROK_EFFORT).
+ * Never call the xAI HTTP API and never set an API key.
  */
 export function getGrokStatus(): GrokStatus {
   return {
     available: false,
     reason: 'not implemented yet',
-    model: process.env.SLOP_GROK_MODEL || 'grok-4.7',
-    effort: process.env.SLOP_GROK_EFFORT || 'medium',
+    model: process.env.SLOPOS_GROK_MODEL || 'grok-4.7',
+    effort: process.env.SLOPOS_GROK_EFFORT || 'medium',
   }
 }
 

@@ -14,7 +14,7 @@ const DEFAULT_WINDOW: AppWindow = {
 }
 
 export function fixturesEnabled(): boolean {
-  return process.env.SLOP_FIXTURES === '1'
+  return process.env.SLOPOS_FIXTURES === '1'
 }
 
 export async function listApps(): Promise<AppManifest[]> {

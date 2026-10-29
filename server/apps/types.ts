@@ -21,7 +21,7 @@ export type AppManifest = {
   prompt?: string
   /** Prompt history. Pass C appends edit / regenerate / fix entries. */
   prompts?: { at: string; prompt: string; kind?: string }[]
-  /** True when the app was loaded from fixtures/apps via SLOP_FIXTURES=1. */
+  /** True when the app was loaded from fixtures/apps via SLOPOS_FIXTURES=1. */
   fixture?: boolean
 }
 
