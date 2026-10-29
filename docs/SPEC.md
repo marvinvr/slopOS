@@ -107,7 +107,7 @@ app.tsx         single file React component, `export default function App() { �
   SDK components, the tokens (`var(--slop-…)`) in inline styles, or a `<style>` string rendered by the app
   (prefix class names with the app id). Everything else (state, logic) lives in that one file.
 - Apps live in `data/apps/<id>/` (+ `versions/<n>.tsx`). Test fixtures in `fixtures/apps/` are only loaded when
-  `SLOP_FIXTURES=1` (for tests / screenshots), never by default.
+  `SLOPOS_FIXTURES=1` (for tests / screenshots), never by default.
 
 ## Runtime & sandbox
 
@@ -172,23 +172,45 @@ POST   /api/proxy                         {url, method, headers, body} → proxi
 GET/PUT /api/settings                     shell settings (theme, accent, wallpaper, dock pins, window layout)
 ```
 
-## Generation via the grok CLI (NO API keys)
+## Generator providers (local CLIs + subscriptions, NO API keys)
 
-- Spawn `grok` (resolve from PATH, override with `SLOP_GROK_BIN`) in headless mode:
-  `grok -p <prompt or --prompt-file> -m ${SLOP_GROK_MODEL:-grok-4.7} --reasoning-effort ${SLOP_GROK_EFFORT:-medium}
-   --output-format streaming-json --cwd <workspace> --no-subagents --disable-web-search …` with tools limited to file
-  read/write/edit inside the workspace (no shell, no web). The child env is `process.env` MINUS `XAI_API_KEY`,
-  `GROK_API_KEY` and any `*_API_KEY` for xAI. Never set those anywhere.
-- Workspace: `data/workspaces/<appId>/` containing `App.tsx` (current source, if editing), `APP_SDK.md`, and a
-  `TASK.md`. Grok edits `App.tsx` (+ writes `manifest.json` fields name/icon/description/window). The server then
-  validates (imports whitelist, default export, esbuild compile). On failure it re-runs grok (continuing the
-  same session where possible, `-r <sessionId>`) with the error, up to 3 attempts.
-- Parse `streaming-json` lines (`thought`, `text`, tool events, `end` with `sessionId`/usage) and forward them as SSE
-  progress. One job at a time, FIFO queue, timeout (default 6 min), cancel support.
-- Availability check at startup + on demand (`grok models` / a cheap probe). Auth failures produce a clear
-  "Grok is not logged in — run `grok` once in a terminal" state; never try to work around auth.
-- Mock mode for testing: `SLOP_GROK_MOCK=1` uses a fake runner that emits a realistic event stream and writes a
-  canned app (and can simulate a compile error on attempt 1 to exercise the fix loop).
+The generator is pluggable (BRIEF.md › Generator providers). Marvin's configuration uses **grok**; **codex** and **claude**
+must work too. Every provider runs a locally installed CLI that is logged in with a subscription. API keys are never
+used: the child env is `process.env` minus `XAI_API_KEY`, `GROK_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+(and any other `*_API_KEY` of these vendors); slopOS never sets them anywhere.
+
+```ts
+// server/generator/types.ts — the one small interface
+interface GeneratorProvider {
+  id: 'grok' | 'codex' | 'claude' | 'mock'
+  availability(): Promise<{ available: boolean; loggedIn?: boolean; reason?: string; model: string; effort: string }>
+  run(opts: { prompt: string; cwd: string; kind: 'app'|'view'|'content'|'route'; jsonSchema?: object;
+              resumeSessionId?: string; signal: AbortSignal; timeoutMs: number }): AsyncIterable<GenEvent>
+}
+type GenEvent = { type: 'status'|'thinking'|'text'|'tool'|'log'; text: string }
+              | { type: 'end'; sessionId?: string; output?: string /* final text / JSON */; usage?: object }
+              | { type: 'error'; message: string; auth?: boolean }
+```
+
+Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>_BIN`, `SLOPOS_<P>_MODEL`, `SLOPOS_<P>_EFFORT`):
+- **grok** (default): `grok -p … -m ${SLOPOS_GROK_MODEL:-grok-4.7} --reasoning-effort ${SLOPOS_GROK_EFFORT:-medium}
+  --output-format streaming-json --cwd <workspace> --no-subagents --disable-web-search` + tools limited to file
+  read/write/edit (no shell, no web); `-r <sessionId>` to continue for fix attempts; `--json-schema` for content.
+- **codex**: `codex exec --json` (ChatGPT login), `-m`/`-c model_reasoning_effort=…`, sandbox restricted to the workspace
+  (`--sandbox workspace-write`, `-C <workspace>`, no network), `codex exec resume <id>` for fixes, output schema flag for content if available.
+- **claude**: `claude -p --output-format stream-json --verbose` (Max login), `--model`, effort via the CLI's mechanism,
+  `--allowedTools Read,Write,Edit` (no Bash/Web), `--permission-mode acceptEdits`, cwd = workspace, `--resume <id>` for fixes.
+- **mock**: `SLOPOS_GENERATOR=mock` — canned, realistic event streams + results for all kinds (tests, screenshots).
+
+Common pipeline (provider-independent): workspace `data/workspaces/<appId>/` with `TASK.md`, `APP_SDK.md`, current
+`App.tsx` when editing; the provider edits `App.tsx` (or `View.tsx`) + `manifest.json` (+ `world.json`); the server
+validates (imports whitelist, default export, esbuild compile) and on failure resumes the session with the errors, up to
+3 attempts. Job queue with concurrency `SLOPOS_CONCURRENCY` (default 2), timeout `SLOPOS_TIMEOUT_MS` (default 6 min),
+cancel. Availability probe at startup + cached 60s; auth failures → clear "<Provider> isn't signed in — run `<cli>`
+once in a terminal" state; never work around auth. UI copy names the active provider ("Generate with Grok" /
+"with Codex" / "with Claude").
+
+All slopOS env vars use the `SLOPOS_` prefix (e.g. `SLOPOS_FIXTURES=1`, `SLOPOS_GENERATOR`, `PORT`).
 
 ## The infinite world (core architecture — see BRIEF.md › Core idea)
 
@@ -262,8 +284,8 @@ POST /api/reset {confirm: "RESET"}                wipe the whole generated world
   and stored views/content. Every prompt gets a compact **world digest** (capped, most relevant first: the calling app's
   summary + its views + related entities + other apps' names/purposes) so results are coherent with what exists.
   After each generation Grok also writes `world.json` (entities/summary deltas) in its workspace; the server merges it.
-- **Models per kind** (env, defaults): app `grok-4.7`/medium, view `grok-4.7`/medium, content `grok-4.7-build-fast`/low
-  with `--json-schema` and no tools. Queue concurrency `SLOP_GROK_CONCURRENCY` (default 2), app jobs prioritized after
+- **Models per kind** (grok defaults; overridable per provider and kind, e.g. `SLOPOS_GROK_MODEL_CONTENT`): app `grok-4.7`/medium,
+  view `grok-4.7`/medium, content `grok-4.7-build-fast`/low with `--json-schema` and no tools. Queue concurrency `SLOPOS_CONCURRENCY` (default 2), app jobs prioritized after
   interactive view/content jobs only if they were started earlier (FIFO otherwise).
 - **Persistence = continue where you left off:** apps, views, content, world, app storage, open windows with geometry
   and each window's screen stack all survive restarts and reloads.
@@ -295,7 +317,7 @@ Small deviations from the paragraphs above, recorded so later passes don't trip 
 - Storage bodies are `{ value }` for `PUT` and `GET /api/storage/:appId/:key`. `GET /api/storage/:appId` returns `{ data }`. `DELETE /api/storage/:appId/:key` exists so `storage.remove` works. A missing key is `404`.
 - `POST /api/proxy` allows `GET` and `POST` only, `http:`/`https:` only, no credentials in the URL, 15s timeout, 1MB response. The JSON result is `{ status, headers, body }`.
 - Generation routes (`/api/apps/generate`, edit, regenerate, fix, revert, `/api/jobs`, `/api/jobs/:id/events`) answer `501 { error: 'not implemented yet' }` from `server/grok/index.ts`. Health reports `{ available: false, reason: 'not implemented yet', model, effort }`. Pass C replaces that module.
-- Fixture apps under `fixtures/apps/` load only when `SLOP_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
+- Fixture apps under `fixtures/apps/` load only when `SLOPOS_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
 - The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.
 
 ### Full screen ("jump into slopOS")
