@@ -43,6 +43,6 @@ docs/SPEC.md       engineering contract
 
 ## Desktop
 
-The menu bar has the logo (About, theme, accent, full screen, restart), the active app name, that app's menus, a Window menu, and the clock. The dock shows pinned apps, running apps, and the drawer button. With no apps it shows only the drawer button. The first visit offers Enter slopOS, which goes full screen (`Ctrl/Cmd+Shift+F` later).
+The menu bar has the logo (About, theme, accent, restart), the active app name, that app's menus, a Window menu, and the clock. The dock shows pinned apps, running apps, and the drawer button. With no apps it shows only the drawer button. Full screen is pass A's; the runtime already forwards Ctrl/Cmd+Shift+F and an unhandled Escape to `web/src/shell/shortcuts.ts`.
 
 Windows drag from the title bar, resize from every edge, and use the traffic lights. Geometry is saved through `/api/settings`. Ctrl and Cmd both work for Space / K (spotlight), W (close), M (minimize), and backtick (cycle).

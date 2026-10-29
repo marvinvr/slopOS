@@ -80,6 +80,10 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
       runShortcut({
         key: String(payload.key ?? ''),
         code: typeof payload.code === 'string' ? payload.code : '',
+        metaKey: Boolean(payload.metaKey),
+        ctrlKey: Boolean(payload.ctrlKey),
+        shiftKey: Boolean(payload.shiftKey),
+        altKey: Boolean(payload.altKey),
       })
       break
     case 'storage.get': {

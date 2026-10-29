@@ -43,9 +43,25 @@ export function reportError(message: string, stack?: string): void {
 
 /** Shortcuts the frame must hand to the shell. Ctrl works even when the browser eats Cmd. */
 export function isForwardedShortcut(event: KeyboardEvent): boolean {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return false
+  if (event.altKey) return false
   const key = event.key.toLowerCase()
+  const mod = event.metaKey || event.ctrlKey
+  if (!mod) return false
+  // Pass A toggles full screen. Both chords, so a browser that eats one still delivers the other.
+  if (key === 'f' && (event.shiftKey || (event.metaKey && event.ctrlKey))) return true
+  if (event.shiftKey) return false
   return key === 'w' || key === 'm' || key === 'k' || key === ' ' || event.code === 'Space' || event.key === '`' || event.code === 'Backquote'
+}
+
+export function shortcutPayload(event: KeyboardEvent) {
+  return {
+    key: event.key,
+    code: event.code,
+    metaKey: event.metaKey,
+    ctrlKey: event.ctrlKey,
+    shiftKey: event.shiftKey,
+    altKey: event.altKey,
+  }
 }
 
 window.addEventListener('message', (event) => {

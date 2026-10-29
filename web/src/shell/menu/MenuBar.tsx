@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { WireMenu } from '../../../../runtime/protocol'
-import { isFullscreen, toggleFullscreen } from '../fullscreen'
 import { modLabel } from '../metrics'
 import { Mark } from '../icons'
 import { useShell } from '../store'
@@ -13,13 +12,6 @@ export function MenuBar() {
   const accent = useShell((state) => state.accent)
   const setTheme = useShell((state) => state.setTheme)
   const setAccent = useShell((state) => state.setAccent)
-  const [full, setFull] = useState(() => isFullscreen())
-
-  useEffect(() => {
-    const onChange = () => setFull(isFullscreen())
-    document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
-  }, [])
   const setAboutOpen = useShell((state) => state.setAboutOpen)
   const apps = useShell((state) => state.apps)
   const windows = useShell((state) => state.windows)
@@ -48,11 +40,6 @@ export function MenuBar() {
       onSelect: () => setAccent(item.color),
     })),
     'separator',
-    {
-      label: full ? 'Exit Full Screen' : 'Enter Full Screen',
-      shortcut: `${mod}⇧F`,
-      onSelect: () => void toggleFullscreen(),
-    },
     { label: 'Restart', onSelect: () => window.location.reload() },
   ]
 

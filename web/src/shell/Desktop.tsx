@@ -1,17 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { applyTheme, resolveTheme } from '../design/theme'
 import { Dock } from './dock/Dock'
 import { AboutDialog } from './menu/AboutDialog'
 import { Drawer } from './drawer'
 import { Invite } from './empty/Invite'
-import { welcomeChoice } from './fullscreen'
 import { MenuBar } from './menu/MenuBar'
 import { useShellShortcuts } from './shortcuts'
 import { Spotlight } from './spotlight'
 import { bootShell, useShell } from './store'
 import { Toasts } from './toasts/Toasts'
 import { Wallpaper } from './wallpaper/Wallpaper'
-import { Welcome } from './welcome/Welcome'
 import { WindowManager } from './window/WindowManager'
 
 export function Desktop() {
@@ -20,14 +18,7 @@ export function Desktop() {
   const interacting = useShell((state) => state.interacting)
   const theme = useShell((state) => state.theme)
   const accent = useShell((state) => state.accent)
-  const [welcomed, setWelcomed] = useState(() => welcomeChoice() !== null)
   useShellShortcuts()
-
-  useEffect(() => {
-    const onWelcome = () => setWelcomed(true)
-    window.addEventListener('slop-welcome', onWelcome)
-    return () => window.removeEventListener('slop-welcome', onWelcome)
-  }, [])
 
   useEffect(() => {
     void bootShell()
@@ -56,7 +47,7 @@ export function Desktop() {
   return (
     <div className={interacting ? 'shell-desktop is-interacting' : 'shell-desktop'}>
       <Wallpaper />
-      {loaded && apps.length === 0 && welcomed ? <Invite /> : null}
+      {loaded && apps.length === 0 ? <Invite /> : null}
       <WindowManager />
       <MenuBar />
       <Dock />
@@ -64,7 +55,6 @@ export function Desktop() {
       <Spotlight />
       <Drawer />
       <AboutDialog />
-      <Welcome />
     </div>
   )
 }

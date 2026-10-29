@@ -1,7 +1,7 @@
 import { Component, useEffect, useState, type ComponentType, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Spinner } from '../../web/src/design/kit'
-import { frameAppId, frameVersion, isForwardedShortcut, reportError, send } from './host'
+import { frameAppId, frameVersion, isForwardedShortcut, reportError, send, shortcutPayload } from './host'
 import { SlopProvider } from './context'
 import './frame-imports'
 
@@ -89,17 +89,20 @@ function installHostBridges(): void {
       if (!isForwardedShortcut(event)) return
       event.preventDefault()
       event.stopPropagation()
-      send('keydown', {
-        key: event.key,
-        code: event.code,
-        metaKey: event.metaKey,
-        ctrlKey: event.ctrlKey,
-        shiftKey: event.shiftKey,
-        altKey: event.altKey,
-      })
+      send('keydown', shortcutPayload(event))
     },
     true,
   )
+  // Escape stays in the app if something there handled it (preventDefault).
+  // Otherwise the shell gets it, after every listener on this turn has run.
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+    const payload = shortcutPayload(event)
+    queueMicrotask(() => {
+      if (event.defaultPrevented) return
+      send('keydown', payload)
+    })
+  })
   window.addEventListener('error', (event) => {
     reportError(event.message || 'Script error', event.error instanceof Error ? event.error.stack : undefined)
   })
