@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { cx } from './cx'
+import { useGenerative, visibleText } from './generative'
 import { Icon } from './Icon'
 
 type Common = { className?: string; style?: CSSProperties; disabled?: boolean }
@@ -9,6 +10,8 @@ export type ButtonProps = Common & {
   size?: 'sm' | 'md'
   type?: 'button' | 'submit' | 'reset'
   title?: string
+  /** Used when `onClick` is omitted. Defaults to the visible label. */
+  intent?: string
   onClick?: () => void
   children?: ReactNode
 }
@@ -19,19 +22,22 @@ export function Button({
   type = 'button',
   disabled,
   title,
+  intent,
   onClick,
   className,
   style,
   children,
 }: ButtonProps) {
+  const gen = useGenerative({ onClick, disabled, intent, label: visibleText(children) || title || '' })
   return (
     <button
       type={type}
-      className={cx('slop-btn', variant, size === 'sm' && 'sm', className)}
+      className={cx('slop-btn', variant, size === 'sm' && 'sm', gen.generative && 'slop-generative', gen.busy && 'is-busy', className)}
       style={style}
       disabled={disabled}
       title={title}
-      onClick={onClick}
+      aria-busy={gen.busy || undefined}
+      onClick={gen.onClick}
     >
       {children}
     </button>
@@ -76,6 +82,7 @@ export type InputProps = Common & {
   defaultValue?: string
   placeholder?: string
   type?: string
+  size?: 'sm' | 'md'
   autoFocus?: boolean
   'aria-label'?: string
   onChange?: (value: string) => void
@@ -86,6 +93,7 @@ export function Input({
   defaultValue,
   placeholder,
   type = 'text',
+  size = 'md',
   autoFocus,
   disabled,
   onChange,
@@ -93,10 +101,9 @@ export function Input({
   style,
   ...rest
 }: InputProps) {
-  const ariaLabel = rest['aria-label']
   return (
     <input
-      className={cx('slop-input', className)}
+      className={cx('slop-input', size === 'sm' && 'sm', className)}
       style={style}
       value={value}
       defaultValue={value === undefined ? defaultValue : undefined}
@@ -104,8 +111,8 @@ export function Input({
       type={type}
       autoFocus={autoFocus}
       disabled={disabled}
-      aria-label={ariaLabel}
-      onChange={(e) => onChange?.(e.target.value)}
+      aria-label={rest['aria-label']}
+      onChange={(event) => onChange?.(event.target.value)}
     />
   )
 }
@@ -140,7 +147,7 @@ export function TextArea({
       rows={rows}
       disabled={disabled}
       aria-label={rest['aria-label']}
-      onChange={(e) => onChange?.(e.target.value)}
+      onChange={(event) => onChange?.(event.target.value)}
     />
   )
 }
@@ -149,18 +156,19 @@ export type SelectProps = Common & {
   value?: string
   onChange?: (value: string) => void
   options: { value: string; label: string }[]
+  size?: 'sm' | 'md'
   'aria-label'?: string
 }
 
-export function Select({ value, onChange, options, disabled, className, style, ...rest }: SelectProps) {
+export function Select({ value, onChange, options, size = 'md', disabled, className, style, ...rest }: SelectProps) {
   return (
     <select
-      className={cx('slop-select', className)}
+      className={cx('slop-select', size === 'sm' && 'sm', className)}
       style={style}
       value={value}
       disabled={disabled}
       aria-label={rest['aria-label']}
-      onChange={(e) => onChange?.(e.target.value)}
+      onChange={(event) => onChange?.(event.target.value)}
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -175,12 +183,13 @@ export type CheckboxProps = Common & {
   checked?: boolean
   onChange?: (checked: boolean) => void
   label?: string
+  'aria-label'?: string
 }
 
-export function Checkbox({ checked = false, onChange, label, disabled, className, style }: CheckboxProps) {
+export function Checkbox({ checked = false, onChange, label, disabled, className, style, ...rest }: CheckboxProps) {
   return (
-    <label className={cx('slop-check', className)} style={style}>
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange?.(e.target.checked)} />
+    <label className={cx('slop-check', disabled && 'is-disabled', className)} style={style}>
+      <input type="checkbox" checked={checked} disabled={disabled} aria-label={rest['aria-label']} onChange={(event) => onChange?.(event.target.checked)} />
       {label ? <span>{label}</span> : null}
     </label>
   )
@@ -195,7 +204,7 @@ export type SwitchProps = Common & {
 
 export function Switch({ checked = false, onChange, label, disabled, className, style, ...rest }: SwitchProps) {
   return (
-    <label className={cx('slop-switch', className)} style={style}>
+    <label className={cx('slop-switch', disabled && 'is-disabled', className)} style={style}>
       <button
         type="button"
         role="switch"
@@ -246,7 +255,7 @@ export function Slider({
       defaultValue={value === undefined ? defaultValue : undefined}
       disabled={disabled}
       aria-label={rest['aria-label']}
-      onChange={(e) => onChange?.(Number(e.target.value))}
+      onChange={(event) => onChange?.(Number(event.target.value))}
     />
   )
 }
