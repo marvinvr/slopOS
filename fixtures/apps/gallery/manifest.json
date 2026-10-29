@@ -1,0 +1,11 @@
+{
+  "id": "gallery",
+  "name": "Kit",
+  "icon": "Palette",
+  "description": "Every design-kit control, in the current theme.",
+  "tint": "#e4532d",
+  "window": { "width": 920, "height": 720, "minWidth": 560, "minHeight": 420, "resizable": true },
+  "version": 2,
+  "createdAt": "2026-10-29T00:00:00.000Z",
+  "updatedAt": "2026-10-29T00:00:00.000Z"
+}

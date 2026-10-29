@@ -1,5 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 import { SLOP_PROTOCOL, type SlopMessage, type WireMenu } from '../../../../runtime/protocol'
+import { routeActionMessage } from './actions'
+import { routeGenMessage } from './gen'
 import { runShortcut } from '../shortcuts'
 import { useShell, type Win } from '../store'
 
@@ -38,16 +40,23 @@ function post(frame: HTMLIFrameElement | null, message: { type: string; payload?
 }
 
 async function handleMessage(win: Win, message: SlopMessage, reply: (payload: unknown) => void): Promise<void> {
+  const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-win="${win.id}"]`)
+  const tell = (next: { type: string; payload?: unknown }) => post(frame, next)
+  if (await routeGenMessage(win, message, tell)) return
+  if (await routeActionMessage(message, reply)) return
   const shell = useShell.getState()
   const payload = (message.payload ?? {}) as Record<string, unknown>
   switch (message.type) {
     case 'ready': {
       const state = useShell.getState()
-      const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-win="${win.id}"]`)
       const current = state.windows.find((item) => item.id === win.id)
+      const app = state.apps.find((item) => item.id === win.appId)
       post(frame, { type: 'theme', payload: { mode: state.resolved, accent: state.accent } })
       post(frame, { type: 'focus', payload: { focused: state.focusedWindowId === win.id } })
-      if (current?.screens !== undefined) post(frame, { type: 'screens.restore', payload: { stack: current.screens } })
+      post(frame, {
+        type: 'screens.restore',
+        payload: { screens: current?.screens ?? [], appName: app?.name ?? current?.title ?? win.appId },
+      })
       break
     }
     case 'setTitle':
@@ -70,9 +79,6 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
       if (typeof payload.title === 'string') {
         shell.pushToast(payload.title, typeof payload.body === 'string' ? payload.body : undefined, win.appId)
       }
-      break
-    case 'screens.state':
-      shell.setScreens(win.id, Object.prototype.hasOwnProperty.call(payload, 'stack') ? payload.stack : payload)
       break
     case 'menu.set':
       shell.setMenus(win.id, Array.isArray(payload.menus) ? (payload.menus as WireMenu[]) : [])

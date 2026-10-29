@@ -26,6 +26,7 @@
     "web/src",
     "runtime",
     "fixtures",
+    "scripts",
     "vite.config.ts",
     "vite.runtime.config.ts"
   ]

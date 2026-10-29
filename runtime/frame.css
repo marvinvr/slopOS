@@ -21,8 +21,133 @@ body {
 
 .slop-app-root {
   flex: 1;
+  height: 100%;
   min-height: 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.slop-world {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.slop-world-base {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.slop-world-base[hidden] {
+  display: none !important;
+}
+
+.slop-screen {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.slop-screen-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 8px 0 4px;
+  border-bottom: 1px solid var(--slop-border);
+  flex: none;
+}
+
+.slop-screen-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slop-screen-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.slop-screen-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 16px;
+  font-size: var(--slop-text-xs);
+  color: var(--slop-fg-muted);
+  background: color-mix(in srgb, var(--slop-bg) 88%, transparent);
+  border-top: 1px solid var(--slop-border);
+}
+
+.slop-material,
+.slop-gen-error {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.slop-gen-error {
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.slop-material-title {
+  margin: 0;
+  font-family: var(--slop-font-display);
+  font-size: var(--slop-text-xl);
+  font-weight: 520;
+  letter-spacing: -0.02em;
+  color: var(--slop-fg);
+}
+
+.slop-material-status {
+  margin: 0;
+  font-size: var(--slop-text-sm);
+  color: var(--slop-fg-muted);
+}
+
+.slop-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, 100%);
+}
+
+.slop-skeleton-bar {
+  height: 12px;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--slop-bg-sunken) 0%, color-mix(in srgb, var(--slop-bg-elevated) 80%, var(--slop-fg)) 45%, var(--slop-bg-sunken) 100%);
+  background-size: 220% 100%;
+  animation: slop-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes slop-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slop-skeleton-bar {
+    animation: none;
+  }
 }
 
 .slop-frame-loading,

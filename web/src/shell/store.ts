@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import { create } from 'zustand'
-import type { WireMenu } from '../../../runtime/protocol'
+import type { PersistedScreen, WireMenu } from '../../../runtime/protocol'
 import { MENU_H, workArea } from './metrics'
 import { wallpaperId } from './wallpaper/wallpapers'
 import { resolveTheme, type ThemeMode } from '../design/theme'
@@ -24,8 +24,7 @@ export type Win = {
   z: number
   phase: WinPhase
   version: number
-  /** Per-window screen stack from the app. Stored and restored untouched. */
-  screens?: unknown
+  screens: PersistedScreen[]
 }
 
 export type Toast = { id: string; title: string; body?: string; appId?: string }
@@ -38,7 +37,7 @@ type SettingsPayload = {
   accent?: string
   wallpaper?: string
   dockPins?: string[]
-  windows?: Array<Rect & { id: string; appId: string; minimized?: boolean; maximized?: boolean; z?: number; restore?: Rect | null; screens?: unknown }>
+  windows?: Array<Rect & { id: string; appId: string; minimized?: boolean; maximized?: boolean; z?: number; restore?: Rect | null; screens?: PersistedScreen[] }>
   focusedWindowId?: string | null
 }
 
@@ -80,6 +79,7 @@ type Actions = {
   refitMaximized: () => void
   setTitle: (id: string, title: string) => void
   setMenus: (id: string, menus: WireMenu[]) => void
+  setWindowScreens: (id: string, screens: PersistedScreen[]) => void
   setWindowError: (id: string, error: WindowError | null) => void
   pushToast: (title: string, body?: string, appId?: string) => void
   dismissToast: (id: string) => void
@@ -88,7 +88,6 @@ type Actions = {
   setWallpaper: (wallpaper: string) => void
   setDockPins: (dockPins: string[]) => void
   toggleDockPin: (appId: string) => void
-  setScreens: (id: string, screens: unknown) => void
   setAboutOpen: (open: boolean) => void
   setDrawerOpen: (open: boolean) => void
   setDrawerPrompt: (open: boolean) => void
@@ -193,6 +192,7 @@ export const useShell = create<State & Actions>((set, get) => ({
       z,
       phase: 'open',
       version: app.version,
+      screens: [],
     }
     bumpPulse(appId)
     set((state) => ({ windows: [...state.windows, win], focusedWindowId: win.id, zCounter: z, drawerOpen: false, spotlightOpen: false }))
@@ -300,6 +300,15 @@ export const useShell = create<State & Actions>((set, get) => ({
 
   setMenus: (id, menus) => set((state) => ({ appMenus: { ...state.appMenus, [id]: menus } })),
 
+  setWindowScreens: (id, screens) => {
+    const current = get().windows.find((win) => win.id === id)
+    if (!current || JSON.stringify(current.screens) === JSON.stringify(screens)) return
+    set((state) => ({
+      windows: state.windows.map((win) => (win.id === id ? { ...win, screens } : win)),
+    }))
+    scheduleSave()
+  },
+
   setWindowError: (id, error) =>
     set((state) => {
       const windowErrors = { ...state.windowErrors }
@@ -339,13 +348,6 @@ export const useShell = create<State & Actions>((set, get) => ({
     const pins = get().dockPins
     const dockPins = pins.includes(appId) ? pins.filter((id) => id !== appId) : [...pins, appId]
     set({ dockPins })
-    scheduleSave()
-  },
-
-  setScreens: (id, screens) => {
-    set((state) => ({
-      windows: state.windows.map((win) => (win.id === id ? { ...win, screens } : win)),
-    }))
     scheduleSave()
   },
 
@@ -439,7 +441,7 @@ function scheduleSave(): void {
           maximized: win.maximized,
           z: win.z,
           restore: win.restore,
-          ...(win.screens !== undefined ? { screens: win.screens } : {}),
+          screens: win.screens,
         })),
     }
     void fetch('/api/settings', {
@@ -467,7 +469,7 @@ function windowFromSaved(saved: NonNullable<SettingsPayload['windows']>[number],
     z: saved.z ?? 1,
     phase: saved.minimized ? 'minimized' : 'open',
     version: app.version,
-    ...(saved.screens !== undefined ? { screens: saved.screens } : {}),
+    screens: Array.isArray(saved.screens) ? saved.screens : [],
   }
 }
 

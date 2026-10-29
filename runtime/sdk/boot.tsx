@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Spinner } from '../../web/src/design/kit'
 import { frameAppId, frameVersion, isForwardedShortcut, reportError, send, shortcutPayload } from './host'
 import { SlopProvider } from './context'
+import { WorldProvider } from './world'
 import './frame-imports'
 
 type CrashProps = { message: string; stack?: string }
@@ -128,7 +129,9 @@ export function bootFrame(rootEl: HTMLElement): void {
   }
   root.render(
     <SlopProvider>
-      <FrameApp />
+      <WorldProvider>
+        <FrameApp />
+      </WorldProvider>
     </SlopProvider>,
   )
 }
