@@ -6,7 +6,7 @@ import { useFullscreen, toggleFullscreen } from '../fullscreen'
 import { Mark } from '../icons'
 import { pushLayer } from '../layers'
 import { shortcutLabel } from '../metrics'
-import { openEditApp, regenerateApp } from '../generation'
+import { openEditApp, providerLabel, regenerateApp, useGrokStatus } from '../generation'
 import { useShell } from '../store'
 import { WALLPAPERS } from '../wallpaper/wallpapers'
 import { MenuList, type MenuNode } from './MenuList'
@@ -38,6 +38,7 @@ export function MenuBar() {
   const windows = useShell((state) => state.windows)
   const focusedWindowId = useShell((state) => state.focusedWindowId)
   const appMenus = useShell((state) => state.appMenus)
+  const provider = providerLabel(useGrokStatus().provider)
   const closeWindow = useShell((state) => state.closeWindow)
   const minimizeWindow = useShell((state) => state.minimizeWindow)
   const toggleMaximize = useShell((state) => state.toggleMaximize)
@@ -143,7 +144,7 @@ export function MenuBar() {
 
   const appItems: MenuNode[] = app
     ? [
-        { type: 'item', label: 'Edit with Grok…', onSelect: () => openEditApp(app.id) },
+        { type: 'item', label: `Edit with ${provider}…`, onSelect: () => openEditApp(app.id) },
         { type: 'item', label: 'Regenerate', onSelect: () => regenerateApp(app.id) },
         { type: 'item', label: 'Version History…', onSelect: () => setShellPrompt({ kind: 'history', appId: app.id }) },
         { type: 'sep' },

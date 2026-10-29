@@ -31,6 +31,7 @@ export default function App() {
       <Row gap={8}>
         <Button variant="primary" onClick={() => setRunning(!running)}>{running ? 'Pause' : 'Start'}</Button>
         <Button variant="ghost" onClick={() => { setRunning(false); setLeft(25 * 60) }}>Reset</Button>
+        <Button variant="ghost">Weekly streaks</Button>
       </Row>
     </Stack>
   )
@@ -60,6 +61,7 @@ export default function App() {
         </List>
       )}
       <Button variant="ghost" onClick={() => { const text = draft.trim(); if (!text) return; setItems((prev) => [...prev, text]); setDraft('') }}>Add</Button>
+      <Button variant="ghost">Weekly streaks</Button>
     </Stack>
   )
 }

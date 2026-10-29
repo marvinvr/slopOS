@@ -7,9 +7,30 @@ export function providerId(): ProviderId {
   return IDS.includes(raw as ProviderId) ? (raw as ProviderId) : 'grok'
 }
 
-export function timeoutMs(): number {
-  const n = Number(process.env.SLOPOS_TIMEOUT_MS)
-  return Number.isFinite(n) && n >= 1000 ? n : 6 * 60 * 1000
+const DEFAULT_TIMEOUT = {
+  app: 10 * 60 * 1000,
+  view: 5 * 60 * 1000,
+  content: 90 * 1000,
+  route: 60 * 1000,
+} as const
+
+type TimeoutBucket = keyof typeof DEFAULT_TIMEOUT
+
+function timeoutBucket(kind: string): TimeoutBucket {
+  if (kind === 'view') return 'view'
+  if (kind === 'content') return 'content'
+  if (kind === 'route') return 'route'
+  return 'app'
+}
+
+/** Per-kind env wins, then SLOPOS_TIMEOUT_MS, then the built-in default for that kind. */
+export function timeoutFor(kind: string): number {
+  const bucket = timeoutBucket(kind)
+  const specific = Number(process.env[`SLOPOS_TIMEOUT_MS_${bucket.toUpperCase()}`])
+  if (Number.isFinite(specific) && specific >= 1000) return specific
+  const global = Number(process.env.SLOPOS_TIMEOUT_MS)
+  if (Number.isFinite(global) && global >= 1000) return global
+  return DEFAULT_TIMEOUT[bucket]
 }
 
 export function concurrency(): number {

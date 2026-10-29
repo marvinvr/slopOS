@@ -212,7 +212,9 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
   the official TypeScript client `@agentclientprotocol/sdk` (JSON-RPC: initialize, session/new with cwd = the per-app
   sandbox workspace, session/prompt with streaming session/update notifications, session/cancel, model
   `${SLOPOS_GROK_MODEL:-grok-4.7}` / effort `${SLOPOS_GROK_EFFORT:-medium}` per session, permission requests answered
-  by slopOS: allow only file read/write/edit inside the workspace, deny shell/web/everything else). Avoids the ~6 s
+  by slopOS: allow only file read/write/edit inside the workspace, deny shell/web/everything else). After `session/new`,
+  `session/load`, and an in-memory resume, slopOS calls `session/set_config_option` for `model` and `reasoning_effort`.
+  The CLI flag loses to the user's own config in ACP mode; the protocol call is what makes the slopOS setting stick. Avoids the ~6 s
   per-call startup, supports cancel, and keeps one session per app for coherent follow-up generations (edit/fix/views).
   Child env adds `GROK_CLAUDE_MCPS_ENABLED=0` and `GROK_MEMORY=0` (so the user's own skills/MCP servers/memory don't
   leak in). Restart the process if it dies; if ACP cannot start/initialize, the provider reports
@@ -227,8 +229,10 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
 Common pipeline (provider-independent): workspace `data/workspaces/<appId>/` with `TASK.md`, `APP_SDK.md`, current
 `App.tsx` when editing; the provider edits `App.tsx` (or `View.tsx`) + `manifest.json` (+ `world.json`); the server
 validates (imports whitelist, default export, esbuild compile) and on failure resumes the session with the errors, up to
-3 attempts. Job queue with concurrency `SLOPOS_CONCURRENCY` (default 2), timeout `SLOPOS_TIMEOUT_MS` (default 6 min),
-cancel. Availability probe at startup + cached 60s; auth failures → clear "<Provider> isn't signed in — run `<cli>`
+3 attempts. Job queue with concurrency `SLOPOS_CONCURRENCY` (default 2). Timeouts are per kind: app 10 min
+(`SLOPOS_TIMEOUT_MS_APP`), view 5 min (`SLOPOS_TIMEOUT_MS_VIEW`), content 90 s (`SLOPOS_TIMEOUT_MS_CONTENT`),
+route 60 s (`SLOPOS_TIMEOUT_MS_ROUTE`). A set per-kind value wins; `SLOPOS_TIMEOUT_MS` covers any kind without one.
+Cancel stays. Availability probe at startup + cached 60s; auth failures → clear "<Provider> isn't signed in — run `<cli>`
 once in a terminal" state; never work around auth. UI copy names the active provider ("Generate with Grok" /
 "with Codex" / "with Claude").
 
@@ -342,7 +346,8 @@ Small deviations from the paragraphs above, recorded so later passes don't trip 
 - `session/load` is used only when the Grok agent advertises `loadSession`. Otherwise the session id lives only as long as that ACP process.
 - Interactive jobs (view, content, route) are picked before app jobs that have not started. A running job is not preempted. Order inside each class is FIFO.
 - `SLOPOS_DATA_DIR` selects the data directory. It is read when the server process starts, so it has to be in the environment rather than applied later from `.env`. `SLOPOS_MOCK_MS` sets the mock stream length (default 6000).
-- Per-kind model and effort: `SLOPOS_<P>_MODEL_<KIND>` and `SLOPOS_<P>_EFFORT_<KIND>`. For grok, content and route stay on the faster built-in default unless that kind override is set. Codex and claude omit `-m` / `model` when the model is unset, so the CLI's own default is used.
+- Per-kind model and effort: `SLOPOS_<P>_MODEL_<KIND>` and `SLOPOS_<P>_EFFORT_<KIND>`. For grok, content and route stay on the faster built-in default unless that kind override is set. Codex and claude omit `-m` / `model` when the model is unset, so the CLI's own default is used. Grok also applies model and effort with `session/set_config_option` (`model`, `reasoning_effort`) after the session opens, because the user's CLI config wins over `--reasoning-effort` in ACP mode.
+- Job timeouts: app 10 min, view 5 min, content 90 s, route 60 s. `SLOPOS_TIMEOUT_MS_<KIND>` overrides that kind. `SLOPOS_TIMEOUT_MS` is the fallback for kinds without their own value.
 - Fixture apps under `fixtures/apps/` load only when `SLOPOS_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
 - The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.
 - Each saved window may also carry `screens`: the in-window stack (`{ id, title, viewId, intent?, params?, context? }[]`), written by the app via `screens.state` and restored into the iframe on `ready`.

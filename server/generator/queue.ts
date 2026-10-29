@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { nanoid } from 'nanoid'
 import { jobsPath } from '../paths'
-import { timeoutMs, concurrency } from './config'
+import { timeoutFor, concurrency } from './config'
 import { noteAuthFailure } from './auth'
 import { GeneratorError, type GenResult, type SseEvent } from './types'
 
@@ -27,6 +27,7 @@ type Job = JobSnapshot & {
   listeners: Set<(event: SseEvent) => void>
   abort?: AbortController
   cacheKey?: string
+  timeoutMs: number
   run: (ctx: JobContext) => Promise<unknown>
 }
 
@@ -75,6 +76,7 @@ export function enqueue(input: {
     events: [],
     listeners: new Set(),
     cacheKey: input.cacheKey,
+    timeoutMs: timeoutFor(input.kind),
     run: input.run,
   }
   jobs.set(job.id, job)
@@ -144,6 +146,7 @@ export async function loadJobs(): Promise<void> {
         error: state === 'failed' && (saved.state === 'queued' || saved.state === 'running') ? 'Interrupted by a restart' : saved.error,
         events: [],
         listeners: new Set(),
+        timeoutMs: timeoutFor(saved.kind),
         run: async () => undefined,
       }
       jobs.set(job.id, job)
@@ -187,7 +190,7 @@ async function runJob(job: Job): Promise<void> {
   const timer = setTimeout(() => {
     timedOut = true
     abort.abort()
-  }, timeoutMs())
+  }, job.timeoutMs)
   try {
     const result = await job.run({
       jobId: job.id,

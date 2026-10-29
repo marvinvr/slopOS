@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { Icon } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { scoreApp } from '../fuzzy'
-import { openEditApp, regenerateApp, startGeneration } from '../generation'
+import { openEditApp, providerLabel, regenerateApp, startGeneration, useGrokStatus } from '../generation'
 import { AppTile } from '../icons'
 import { pushLayer } from '../layers'
 import { ContextMenu, type MenuNode } from '../menu/MenuList'
@@ -27,6 +27,7 @@ export function Drawer() {
   const [composing, setComposing] = useState(false)
   const [draft, setDraft] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; appId: string } | null>(null)
+  const provider = providerLabel(useGrokStatus().provider)
   const searchRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [cols, setCols] = useState(6)
@@ -161,7 +162,7 @@ export function Drawer() {
   const menuItems: MenuNode[] = menuApp
     ? [
         { type: 'item', label: 'Open', onSelect: () => openApp(menuApp.id) },
-        { type: 'item', label: 'Edit with Grok…', onSelect: () => openEditApp(menuApp.id) },
+        { type: 'item', label: `Edit with ${provider}…`, onSelect: () => openEditApp(menuApp.id) },
         { type: 'item', label: 'Regenerate', onSelect: () => regenerateApp(menuApp.id) },
         { type: 'item', label: 'Version History…', onSelect: () => setShellPrompt({ kind: 'history', appId: menuApp.id }) },
         { type: 'sep' },
@@ -212,7 +213,7 @@ export function Drawer() {
               <span className="shell-tile shell-new-tile">
                 <Icon name="Plus" size={26} />
               </span>
-              <span>New app…</span>
+              <span>New app with {provider}…</span>
             </button>
           )}
           {shown.map((app, index) => (

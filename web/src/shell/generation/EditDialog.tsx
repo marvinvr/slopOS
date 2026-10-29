@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Heading, Icon, Row, Stack, Text, TextArea } from '../../design/kit'
-import { closeEdit, restoreAppVersion, submitEdit } from './state'
+import { closeEdit, providerLabel, restoreAppVersion, submitEdit, useGeneration } from './state'
 import { useShell } from '../store'
 
 type HistoryEntry = { at: string; prompt: string; kind?: string; version?: number }
 
 export function EditDialog({ appId }: { appId: string }) {
   const app = useShell((state) => state.apps.find((item) => item.id === appId))
+  const provider = providerLabel(useGeneration().status.provider)
   const [prompt, setPrompt] = useState('')
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [busy, setBusy] = useState(false)
@@ -77,7 +78,7 @@ export function EditDialog({ appId }: { appId: string }) {
             Cancel
           </Button>
           <Button variant="primary" disabled={!prompt.trim() || busy} onClick={submit}>
-            Apply
+            Apply with {provider}
           </Button>
         </Row>
         {versions.length ? (

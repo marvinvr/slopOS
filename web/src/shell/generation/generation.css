@@ -48,11 +48,91 @@
   border-top: 1px solid var(--slop-border);
 }
 
-.gen-queue-row .slop-text {
+.gen-queue-row .slop-text,
+.gen-queue-row > span:first-child {
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.gen-queue-meta {
+  flex: none;
+  color: var(--slop-fg-muted);
+  font-size: var(--slop-text-xs);
+}
+
+button.gen-queue-row {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--slop-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.gen-queue-row:disabled {
+  cursor: default;
+}
+
+.gen-status-line,
+.gen-status-kicker {
+  margin: 0;
+}
+
+.gen-status-line {
+  font-size: var(--slop-text-sm);
+  font-weight: 600;
+}
+
+.gen-status-kicker {
+  margin-top: 10px;
+  color: var(--slop-fg-subtle);
+  font-size: var(--slop-text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gen-ready {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gen-ready h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-gen {
+  position: relative;
+}
+
+button.shell-status-icon.shell-gen {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.shell-gen-dot {
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  pointer-events: none;
+}
+
+.shell-gen.is-busy {
+  animation: gen-pulse 2.4s var(--slop-ease) infinite;
 }
 
 .gen-panel {
@@ -204,7 +284,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .gen-spark.is-on,
-  .gen-think {
+  .gen-think,
+  .shell-gen.is-busy {
     animation: none;
   }
 }

@@ -6,7 +6,7 @@ import { getApp, listApps } from '../apps/registry'
 import type { CompileError } from '../apps/types'
 import { appsDir, storageDir, workspacesDir, worldDir } from '../paths'
 import { clearAuthBlock } from './auth'
-import { settingsFor, timeoutMs } from './config'
+import { settingsFor, timeoutFor } from './config'
 import * as persist from './persist'
 import { buildPrompt, type PromptRequest } from './prompts'
 import { getProvider } from './providers/load'
@@ -456,7 +456,7 @@ async function drive(
     freshSession: input.freshSession,
     sessionKey: input.sessionKey,
     signal: ctx.signal,
-    timeoutMs: timeoutMs(),
+    timeoutMs: timeoutFor(input.kind),
     model: settings.model,
     effort: settings.effort,
   })) {

@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Readable, Writable } from 'node:stream'
-import { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, type ClientConnection, type SessionUpdate } from '@agentclientprotocol/sdk'
+import { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, type ClientConnection, type SessionConfigOption, type SessionUpdate } from '@agentclientprotocol/sdk'
 import { binFor, looksLikeAuth, settingsFor, signedOutReason } from '../config'
 import { childEnv } from '../child-env'
 import { loadSession, saveSession } from '../sessions'
@@ -193,33 +193,85 @@ class Gate<T> {
   }
 }
 
+function findOption(options: SessionConfigOption[] | null | undefined, id: string, category: string): SessionConfigOption | undefined {
+  if (!options) return undefined
+  return options.find((item) => item.id === id) || options.find((item) => item.category === category)
+}
+
+function selectableValues(option: SessionConfigOption): string[] {
+  if (option.type !== 'select') return []
+  const values: string[] = []
+  for (const entry of option.options) {
+    if ('options' in entry) {
+      for (const child of entry.options) values.push(child.value)
+    } else {
+      values.push(entry.value)
+    }
+  }
+  return values
+}
+
+/**
+ * The CLI flag loses to the user's own config in ACP mode.
+ * Set model and effort on the session so slopOS always wins.
+ * Called after session/new, session/load, and an in-memory resume.
+ */
+async function ensureSessionSettings(live: Live, sessionId: string, model: string, effort: string, advertised: SessionConfigOption[] | null | undefined): Promise<void> {
+  let options = advertised ?? undefined
+  const apply = async (fallbackId: string, category: string, value: string, label: string): Promise<void> => {
+    const option = findOption(options, fallbackId, category)
+    const configId = option?.id || fallbackId
+    if (option?.type === 'select' && option.currentValue === value) return
+    if (option?.type === 'select') {
+      const choices = selectableValues(option)
+      if (choices.length && !choices.includes(value)) {
+        throw new Error(`Grok cannot use ${label} “${value}”. Available: ${choices.join(', ')}`)
+      }
+    }
+    const updated = await live.connection.agent.request(methods.agent.session.setConfigOption, { sessionId, configId, value })
+    options = updated.configOptions
+    const next = findOption(options, configId, category)
+    const current = next?.type === 'select' ? next.currentValue : undefined
+    if (current !== value) {
+      throw new Error(`Grok kept ${label} ${current || 'unset'} instead of ${value}`)
+    }
+  }
+  if (model !== 'default') await apply('model', 'model', model, 'model')
+  await apply('reasoning_effort', 'thought_level', effort, 'reasoning effort')
+}
+
 async function openSession(live: Live, opts: RunOptions, restarted: boolean): Promise<string> {
   const cwd = path.resolve(opts.cwd)
   const mode: Mode = opts.kind === 'content' || opts.kind === 'route' ? 'none' : 'files'
-  const remember = (sessionId: string) => {
-    live.sessions.set(sessionId, { cwd, mode })
-    return sessionId
-  }
-  if (!restarted && opts.resumeSessionId && !opts.freshSession) return remember(opts.resumeSessionId)
-  if (!opts.freshSession && opts.sessionKey) {
+  let sessionId: string | undefined
+  let advertised: SessionConfigOption[] | null | undefined
+  if (!restarted && opts.resumeSessionId && !opts.freshSession) {
+    sessionId = opts.resumeSessionId
+  } else if (!opts.freshSession && opts.sessionKey) {
     const saved = await loadSession(opts.sessionKey)
     if (saved && saved.model === opts.model && saved.effort === opts.effort && saved.cwd === cwd) {
-      if (!restarted && live.sessions.has(saved.sessionId)) return remember(saved.sessionId)
-      if (live.loadSession) {
+      if (!restarted && live.sessions.has(saved.sessionId)) {
+        sessionId = saved.sessionId
+      } else if (live.loadSession) {
         try {
-          await live.connection.agent.request(methods.agent.session.load, { sessionId: saved.sessionId, cwd, mcpServers: [] })
-          return remember(saved.sessionId)
+          const loaded = await live.connection.agent.request(methods.agent.session.load, { sessionId: saved.sessionId, cwd, mcpServers: [] })
+          sessionId = saved.sessionId
+          advertised = loaded.configOptions
         } catch {
           /* the saved id is not loadable on this process */
         }
-      } else if (!restarted && live.sessions.has(saved.sessionId)) {
-        return remember(saved.sessionId)
       }
     }
   }
-  const created = await live.connection.agent.request(methods.agent.session.new, { cwd, mcpServers: [] })
-  if (opts.sessionKey) await saveSession(opts.sessionKey, { sessionId: created.sessionId, model: opts.model, effort: opts.effort, cwd })
-  return remember(created.sessionId)
+  if (!sessionId) {
+    const created = await live.connection.agent.request(methods.agent.session.new, { cwd, mcpServers: [] })
+    sessionId = created.sessionId
+    advertised = created.configOptions
+  }
+  await ensureSessionSettings(live, sessionId, opts.model, opts.effort, advertised)
+  live.sessions.set(sessionId, { cwd, mode })
+  if (opts.sessionKey) await saveSession(opts.sessionKey, { sessionId, model: opts.model, effort: opts.effort, cwd })
+  return sessionId
 }
 
 function isDeath(err: unknown, live?: Live): boolean {
