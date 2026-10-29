@@ -200,13 +200,20 @@ type GenEvent = { type: 'status'|'thinking'|'text'|'tool'|'log'; text: string }
 ```
 
 Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>_BIN`, `SLOPOS_<P>_MODEL`, `SLOPOS_<P>_EFFORT`):
-- **grok** (default): `grok -p … -m ${SLOPOS_GROK_MODEL:-grok-4.7} --reasoning-effort ${SLOPOS_GROK_EFFORT:-medium}
-  --output-format streaming-json --cwd <workspace> --no-subagents --disable-web-search` + tools limited to file
-  read/write/edit (no shell, no web); `-r <sessionId>` to continue for fix attempts; `--json-schema` for content.
+- **grok** (default): a long-lived `grok agent stdio` process (Grok CLI ACP mode, SuperGrok login, no API key) driven with
+  the official TypeScript client `@agentclientprotocol/sdk` (JSON-RPC: initialize, session/new with cwd = the per-app
+  sandbox workspace, session/prompt with streaming session/update notifications, session/cancel, model
+  `${SLOPOS_GROK_MODEL:-grok-4.7}` / effort `${SLOPOS_GROK_EFFORT:-medium}` per session, permission requests answered
+  by slopOS: allow only file read/write/edit inside the workspace, deny shell/web/everything else). Avoids the ~6 s
+  per-call startup, supports cancel, and keeps one session per app for coherent follow-up generations (edit/fix/views).
+  Child env adds `GROK_CLAUDE_MCPS_ENABLED=0` and `GROK_MEMORY=0` (so the user's own skills/MCP servers/memory don't
+  leak in). Restart the process transparently if it dies. **Fallback:** if ACP fails to start/initialize, spawn
+  `grok -p … --output-format streaming-json --cwd <workspace> --no-subagents --disable-web-search` per job (same env).
 - **codex**: `codex exec --json` (ChatGPT login), `-m`/`-c model_reasoning_effort=…`, sandbox restricted to the workspace
   (`--sandbox workspace-write`, `-C <workspace>`, no network), `codex exec resume <id>` for fixes, output schema flag for content if available.
-- **claude**: `claude -p --output-format stream-json --verbose` (Max login), `--model`, effort via the CLI's mechanism,
-  `--allowedTools Read,Write,Edit` (no Bash/Web), `--permission-mode acceptEdits`, cwd = workspace, `--resume <id>` for fixes.
+- **claude**: the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`, uses the local Claude Code login, no API key), cwd =
+  workspace, `allowedTools: Read, Write, Edit` only (no Bash/Web/MCP), no user settings/skills/MCP loaded
+  (`settingSources: []`), model/effort from env, session resume for fixes, abort via AbortController.
 - **mock**: `SLOPOS_GENERATOR=mock` — canned, realistic event streams + results for all kinds (tests, screenshots).
 
 Common pipeline (provider-independent): workspace `data/workspaces/<appId>/` with `TASK.md`, `APP_SDK.md`, current
