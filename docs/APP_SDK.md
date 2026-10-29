@@ -24,7 +24,7 @@ The same text is the reference for apps written by hand.
   "name": "Notes",
   "icon": "StickyNote",
   "description": "A quiet place for notes.",
-  "tint": "#3b82f6",
+  "tint": "#e8a090",
   "window": { "width": 720, "height": 480, "minWidth": 360, "minHeight": 240, "resizable": true },
   "version": 1,
   "prompt": "original prompt, generated apps only"

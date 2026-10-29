@@ -45,7 +45,7 @@ export function EmptyState({ icon, title, body, className, style, children }: Em
     <div className={cx('slop-empty', className)} style={style}>
       {icon ? (
         <div className="slop-empty-icon">
-          <Icon name={icon} size={28} />
+          <Icon name={icon} size={22} />
         </div>
       ) : null}
       <Heading level={2}>{title}</Heading>

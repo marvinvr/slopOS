@@ -265,6 +265,11 @@
 
 .slop-list-item[aria-selected="true"] {
   background: var(--slop-accent-soft);
+  color: var(--slop-accent);
+}
+
+.slop-list-item[aria-selected="true"] .slop-list-item-sub {
+  color: color-mix(in srgb, var(--slop-accent) 62%, var(--slop-fg-muted));
 }
 
 .slop-list-item-text {
@@ -466,8 +471,27 @@
 }
 
 .slop-empty-icon {
-  color: var(--slop-fg-subtle);
-  margin-bottom: var(--slop-space-1);
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  color: var(--slop-accent);
+  margin-bottom: var(--slop-space-2);
+}
+
+.slop-empty-icon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 46% 54% 50% 50%;
+  background: var(--slop-accent-soft);
+  transform: rotate(-8deg);
+}
+
+.slop-empty-icon .slop-icon {
+  position: relative;
+  z-index: 1;
 }
 
 .slop-spinner {

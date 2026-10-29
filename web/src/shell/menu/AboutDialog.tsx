@@ -21,7 +21,9 @@ export function AboutDialog() {
   return (
     <div className="shell-about-backdrop" onPointerDown={() => close(false)}>
       <div className="shell-about" role="dialog" aria-modal="true" aria-labelledby="slop-about-title" onPointerDown={(event) => event.stopPropagation()}>
-        <Mark size={44} />
+        <div className="shell-about-mark">
+          <Mark size={44} />
+        </div>
         <h1 id="slop-about-title">slopOS</h1>
         <p className="version">Version {SLOP_VERSION}</p>
         <p className="line">A calm desktop for small apps.</p>
