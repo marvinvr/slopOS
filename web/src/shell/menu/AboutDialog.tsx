@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Button } from '../../design/kit'
 import { SLOP_VERSION } from '../../version'
 import { Mark } from '../icons'
+import { pushLayer } from '../layers'
 import { useShell } from '../store'
 
 export function AboutDialog() {
@@ -10,11 +11,7 @@ export function AboutDialog() {
 
   useEffect(() => {
     if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return pushLayer(() => close(false))
   }, [open, close])
 
   if (!open) return null

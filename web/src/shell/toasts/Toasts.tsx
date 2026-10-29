@@ -1,5 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { AppTile, Mark } from '../icons'
 import { useShell } from '../store'
+
+const LIFE = 4600
 
 export function Toasts() {
   const toasts = useShell((state) => state.toasts)
@@ -7,21 +10,39 @@ export function Toasts() {
   return (
     <div className="shell-toasts" aria-live="polite">
       {toasts.map((toast) => (
-        <ToastView key={toast.id} id={toast.id} title={toast.title} body={toast.body} onDone={() => dismiss(toast.id)} />
+        <ToastView key={toast.id} id={toast.id} title={toast.title} body={toast.body} appId={toast.appId} onDone={() => dismiss(toast.id)} />
       ))}
     </div>
   )
 }
 
-function ToastView({ id, title, body, onDone }: { id: string; title: string; body?: string; onDone: () => void }) {
+function ToastView({ id, title, body, appId, onDone }: { id: string; title: string; body?: string; appId?: string; onDone: () => void }) {
+  const app = useShell((state) => (appId ? state.apps.find((item) => item.id === appId) : undefined))
+  const [paused, setPaused] = useState(false)
+  const remaining = useRef(LIFE)
+  const started = useRef(Date.now())
+  const doneRef = useRef(onDone)
+  doneRef.current = onDone
+
   useEffect(() => {
-    const timer = window.setTimeout(onDone, 4200)
+    if (paused) {
+      remaining.current = Math.max(0, remaining.current - (Date.now() - started.current))
+      return
+    }
+    started.current = Date.now()
+    const timer = window.setTimeout(() => doneRef.current(), remaining.current)
     return () => window.clearTimeout(timer)
-  }, [id, onDone])
+  }, [paused, id])
+
   return (
-    <div className="shell-toast" role="status">
-      <strong>{title}</strong>
-      {body ? <p>{body}</p> : null}
+    <div className="shell-toast" role="status" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onClick={onDone}>
+      <span className="shell-toast-icon">
+        {app ? <AppTile id={app.id} icon={app.icon} tint={app.tint} size={28} /> : <Mark size={18} />}
+      </span>
+      <span className="shell-toast-copy">
+        <strong>{title}</strong>
+        {body ? <p>{body}</p> : null}
+      </span>
     </div>
   )
 }

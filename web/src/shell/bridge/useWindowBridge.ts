@@ -44,8 +44,10 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
     case 'ready': {
       const state = useShell.getState()
       const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-win="${win.id}"]`)
+      const current = state.windows.find((item) => item.id === win.id)
       post(frame, { type: 'theme', payload: { mode: state.resolved, accent: state.accent } })
       post(frame, { type: 'focus', payload: { focused: state.focusedWindowId === win.id } })
+      if (current?.screens !== undefined) post(frame, { type: 'screens.restore', payload: { stack: current.screens } })
       break
     }
     case 'setTitle':
@@ -65,7 +67,12 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
       shell.closeWindow(win.id)
       break
     case 'notify':
-      if (typeof payload.title === 'string') shell.pushToast(payload.title, typeof payload.body === 'string' ? payload.body : undefined)
+      if (typeof payload.title === 'string') {
+        shell.pushToast(payload.title, typeof payload.body === 'string' ? payload.body : undefined, win.appId)
+      }
+      break
+    case 'screens.state':
+      shell.setScreens(win.id, Object.prototype.hasOwnProperty.call(payload, 'stack') ? payload.stack : payload)
       break
     case 'menu.set':
       shell.setMenus(win.id, Array.isArray(payload.menus) ? (payload.menus as WireMenu[]) : [])
@@ -84,6 +91,7 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
         ctrlKey: Boolean(payload.ctrlKey),
         shiftKey: Boolean(payload.shiftKey),
         altKey: Boolean(payload.altKey),
+        repeat: Boolean(payload.repeat),
       })
       break
     case 'storage.get': {
