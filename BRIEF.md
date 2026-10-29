@@ -25,3 +25,10 @@ Build slopOS: a web-based desktop "operating system" whose apps are procedurally
 ## Style (Marvin, 2026-10-29 22:02)
 - A modern, slightly creative interpretation of macOS: familiar structure (menu bar, dock/launcher, traffic lights, spotlight), but with its own character. Not hyper-modern or flashy; tasteful, warm, a bit playful. The design kit and generated apps follow the same language.
 - Full screen: a clear way to "jump into" slopOS full screen (browser Fullscreen API: menu-bar logo menu item, shortcut, and an inviting button on first load), with a clean exit (Esc / menu item). Keyboard shortcuts should work well in full screen.
+
+## Core idea: an infinite, procedurally generated world (Marvin, 2026-10-29 22:05)
+- Every open search bar and every button can procedurally generate what's behind it: searching or clicking something that doesn't exist yet makes Grok generate that app / view / screen / content on the fly, so the software is simply usable and the world feels infinite.
+- Somewhat consistent: generated things know the existing world (apps, their data, names, style, earlier generations) so the same query/button leads to coherent results, not random ones. Keep a world/context store the generation prompt draws from.
+- Persistence: everything generated (apps, views, content, app data, window layout) is stored so Marvin can come back and continue exactly where he left off.
+- OS reset: a clear "Reset slopOS" (logo menu, with confirmation) that wipes the generated world and returns to the pristine start.
+- Generation takes seconds: show tasteful, OS-like loading states while things materialize, cache results, avoid regenerating what already exists.
