@@ -29,6 +29,13 @@ hyper-modern, flashy, neon, glassy-for-its-own-sake or cartoonish. Concretely:
 Everything — shell, design kit, and the apps Grok generates (via the generation prompt + docs/APP_SDK.md) —
 speaks this same language, so a generated app looks like it shipped with slopOS.
 
+## Open source
+
+slopOS is public (github.com/marvinvr/slopOS, MIT). Never commit secrets, `.env`, `data/` (the world store), absolute
+paths from a developer machine (`/Users/...`), usernames, or anything machine-specific. Resolve CLIs from PATH (with
+`SLOPOS_<P>_BIN` overrides), paths relative to the repo / `process.cwd()`. Contributors commit locally; the orchestrator
+reviews and pushes.
+
 ## Repo layout
 
 ```
