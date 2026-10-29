@@ -32,3 +32,6 @@ Build slopOS: a web-based desktop "operating system" whose apps are procedurally
 - Persistence: everything generated (apps, views, content, app data, window layout) is stored so Marvin can come back and continue exactly where he left off.
 - OS reset: a clear "Reset slopOS" (logo menu, with confirmation) that wipes the generated world and returns to the pristine start.
 - Generation takes seconds: show tasteful, OS-like loading states while things materialize, cache results, avoid regenerating what already exists.
+
+## Generator providers (Marvin, 2026-10-29 22:12)
+- The generator must be pluggable: Grok CLI (default, configured for Marvin), Codex CLI (codex exec, ChatGPT subscription) and Claude Code CLI (claude -p, Max subscription). All via the local CLIs and their subscription logins, never API keys. One small provider interface (prompt in, streamed text/files out, timeout, cancel), selected via config/.env (e.g. SLOPOS_GENERATOR=grok|codex|claude, plus model/effort per provider).
