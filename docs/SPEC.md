@@ -3,14 +3,31 @@
 Read `BRIEF.md` first (the product brief). This file is the contract every contributor follows.
 If you need to deviate, keep the deviation small and document it in this file in the same commit.
 
-## Taste
+## Taste — "macOS, reinterpreted"
 
-Subtle, modern, coherent, calm. Think "a very clean macOS/visionOS-ish desktop", not a theme park.
-Soft translucency (backdrop-filter blur) on chrome, 1px hairline borders, gentle shadows, 120–220ms
-ease-out animations, no bounce/overshoot except tiny ones on open. No gradients-on-everything, no neon.
-Light and dark mode (follow `prefers-color-scheme` by default; user can override from the logo menu).
-Font: `Inter` (self-hosted via `@fontsource-variable/inter` or system-ui fallback), mono: `JetBrains Mono`
-or ui-monospace fallback. Base UI size 13px.
+A modern, slightly creative interpretation of macOS (see BRIEF.md › Style). Familiar structure — menu bar, dock,
+traffic lights, spotlight, translucent chrome — but with its own character: tasteful, warm, a bit playful. Never
+hyper-modern, flashy, neon, glassy-for-its-own-sake or cartoonish. Concretely:
+
+- **Warm neutrals.** Light mode sits on warm paper/stone greys (e.g. #f6f4f0 / #ece8e1 surfaces, #1f1d1a text),
+  dark mode on warm charcoal (e.g. #1c1b19 / #252321), never blue-black or pure #000/#fff.
+- **One signature accent** used sparingly: a friendly warm tangerine/coral (around #ff6a3d-ish, tuned for contrast),
+  user-switchable (tangerine, blue, green, plum, graphite, rose). Selection highlights are soft accent tints
+  (`--slop-accent-soft`) with accent text, not saturated full bars.
+- **Soft, slightly rounder geometry.** Windows 14px radius, controls 8px, popovers 12px, dock as a floating pill.
+  1px hairlines in warm alpha, layered soft shadows (ambient + key), chrome with blur + a hint of warmth.
+- **Type with a little character.** UI in Inter (variable, self-hosted, 13px base, slightly tight tracking on large
+  sizes). Headings/display moments (About dialog, empty states, big numbers in apps) may use a characterful
+  serif-ish display face such as "Fraunces" or "Instrument Serif" (self-hosted, used sparingly). Mono: JetBrains Mono.
+- **Playful details, small doses:** a blob/drip-shaped "slop" logo mark; traffic lights with crisp tiny glyphs on hover;
+  a gentle spring (very small overshoot) on window open and dock launch; menus that scale in from their anchor;
+  empty states with a small illustrative touch (soft SVG shapes, not clipart); friendly microcopy.
+- **Wallpaper:** soft, warm generated mesh/blob gradients with very subtle grain; a few variants incl. a dark one.
+- **Motion:** 120–220ms, ease-out (`--slop-ease`), springs only for open/launch; respect prefers-reduced-motion.
+- Light and dark mode (follow `prefers-color-scheme` by default; overridable from the logo menu).
+
+Everything — shell, design kit, and the apps Grok generates (via the generation prompt + docs/APP_SDK.md) —
+speaks this same language, so a generated app looks like it shipped with slopOS.
 
 ## Repo layout
 
@@ -48,9 +65,9 @@ area) driven by the design tokens.
 All colors/sizes are CSS custom properties on `:root`, with a `[data-theme="dark"]` override. Names:
 
 ```
---slop-font, --slop-font-mono
+--slop-font, --slop-font-display, --slop-font-mono
 --slop-text-xs(11px) --slop-text-sm(12px) --slop-text-md(13px) --slop-text-lg(15px) --slop-text-xl(20px) --slop-text-2xl(28px)
---slop-radius-sm(6px) --slop-radius-md(9px) --slop-radius-lg(12px) --slop-radius-xl(16px)
+--slop-radius-sm(6px) --slop-radius-md(8px) --slop-radius-lg(12px) --slop-radius-xl(14px)  (window = xl)
 --slop-space-1(4px) … --slop-space-6(24px) --slop-space-8(32px)
 --slop-bg            window/app background
 --slop-bg-elevated   cards, popovers
@@ -59,7 +76,7 @@ All colors/sizes are CSS custom properties on `:root`, with a `[data-theme="dark
 --slop-fg-muted      secondary text
 --slop-fg-subtle     tertiary/placeholder
 --slop-border        hairline borders
---slop-accent        accent (default a calm blue, e.g. #3b82f6-ish) + --slop-accent-fg, --slop-accent-soft
+--slop-accent        accent (default warm tangerine, see Taste) + --slop-accent-fg, --slop-accent-soft
 --slop-danger --slop-success --slop-warning (+ -soft variants)
 --slop-shadow-sm --slop-shadow-md --slop-shadow-lg (window shadow)
 --slop-chrome-bg     translucent bg for menu bar/dock/spotlight (used with backdrop-filter)
