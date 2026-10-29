@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { forgetApp } from '../generator/world'
 import { appsDir, fixturesDir, storageDir, workspacesDir } from '../paths'
 import type { AppManifest, AppWindow } from './types'
 
@@ -52,6 +53,7 @@ export async function deleteApp(id: string): Promise<'ok' | 'not-found' | 'fixtu
   await fs.rm(dir, { recursive: true, force: true })
   await fs.rm(path.join(storageDir, `${id}.json`), { force: true })
   await fs.rm(path.join(workspacesDir, id), { recursive: true, force: true })
+  await forgetApp(id)
   return 'ok'
 }
 
@@ -113,11 +115,28 @@ function normalizeManifest(raw: Partial<AppManifest>, id: string, fixture: boole
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : undefined,
     prompt: typeof raw.prompt === 'string' ? raw.prompt : undefined,
-    prompts: Array.isArray(raw.prompts) ? raw.prompts : undefined,
+    prompts: normalizePrompts(raw.prompts),
     fixture: fixture || undefined,
   }
 }
 
 function num(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function normalizePrompts(value: unknown): AppManifest['prompts'] {
+  if (!Array.isArray(value)) return undefined
+  const prompts: NonNullable<AppManifest['prompts']> = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const row = item as { at?: unknown; prompt?: unknown; kind?: unknown; version?: unknown }
+    if (typeof row.prompt !== 'string' || typeof row.at !== 'string') continue
+    prompts.push({
+      at: row.at,
+      prompt: row.prompt,
+      kind: typeof row.kind === 'string' ? row.kind : undefined,
+      version: typeof row.version === 'number' ? row.version : undefined,
+    })
+  }
+  return prompts.length ? prompts : undefined
 }

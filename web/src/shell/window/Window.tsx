@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { Button } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { useWindowBridge } from '../bridge/useWindowBridge'
-import { fixApp } from '../generation'
+import { fixApp, providerLabel, useGrokStatus } from '../generation'
 import { MENU_H } from '../metrics'
 import { useShell, type Win } from '../store'
 
@@ -25,6 +25,7 @@ export function Window({ win }: { win: Win }) {
   const setGeometry = useShell((state) => state.setGeometry)
   const setInteracting = useShell((state) => state.setInteracting)
   const clearError = useShell((state) => state.setWindowError)
+  const generator = useGrokStatus()
   useWindowBridge(win, iframeRef)
 
   useEffect(() => {
@@ -171,7 +172,7 @@ export function Window({ win }: { win: Win }) {
                   fixApp(win.appId, error.stack ? `${error.message}\n${error.stack}` : error.message)
                 }}
               >
-                Fix with Grok
+                Fix with {providerLabel(generator.provider)}
               </Button>
             ) : null}
             <Button size="sm" variant="ghost" onClick={() => clearError(win.id, null)}>

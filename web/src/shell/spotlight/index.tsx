@@ -3,7 +3,7 @@ import { Icon } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { toggleDarkMode } from '../actions'
 import { GOOD_MATCH, scoreApp, scoreText } from '../fuzzy'
-import { startGeneration, useGrokStatus } from '../generation'
+import { providerLabel, startGeneration, useGrokStatus } from '../generation'
 import { AppTile } from '../icons'
 import { pushLayer } from '../layers'
 import { useShell } from '../store'
@@ -22,13 +22,14 @@ export function Spotlight() {
   const setDrawerOpen = useShell((state) => state.setDrawerOpen)
   const closeAllWindows = useShell((state) => state.closeAllWindows)
   const grok = useGrokStatus()
+  const provider = providerLabel(grok.provider)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const rows = useMemo(
-    () => buildRows(apps, query, grok.available, grok.reason, { setDrawerOpen, closeAllWindows }),
-    [apps, query, grok.available, grok.reason, setDrawerOpen, closeAllWindows],
+    () => buildRows(apps, query, grok.available, grok.reason, provider, { setDrawerOpen, closeAllWindows }),
+    [apps, query, grok.available, grok.reason, provider, setDrawerOpen, closeAllWindows],
   )
 
   useEffect(() => {
@@ -123,12 +124,12 @@ export function Spotlight() {
                   <strong>{row.title}</strong>
                   {row.kind === 'app' && row.subtitle ? <em>{row.subtitle}</em> : null}
                 </span>
-                <span className="shell-spot-hint">{row.kind === 'app' ? 'Open' : row.kind === 'create' ? (row.disabled ? row.reason : 'with Grok') : ''}</span>
+                <span className="shell-spot-hint">{row.kind === 'app' ? 'Open' : row.kind === 'create' && row.disabled ? row.reason : ''}</span>
               </button>
             ))}
           </div>
         ) : (
-          <p className="shell-spot-empty">Describe an app and Grok will write it.</p>
+          <p className="shell-spot-empty">Describe an app and {provider} will write it.</p>
         )}
       </div>
     </div>
@@ -140,6 +141,7 @@ function buildRows(
   query: string,
   grokOk: boolean,
   reason: string | undefined,
+  provider: string,
   actions: { setDrawerOpen: (open: boolean) => void; closeAllWindows: () => void },
 ): Row[] {
   const q = query.trim()
@@ -179,7 +181,7 @@ function buildRows(
   const matchedWell = appRows.some((row) => row.kind === 'app' && row.good) || actionRows.some((row) => row.kind === 'action' && row.good)
   const showCreate = q.length >= 3 || (q.length > 0 && !matchedWell)
   const create: Row | null = showCreate
-    ? { kind: 'create', title: `Create “${q}”`, disabled: !grokOk, reason: reason || 'Grok isn’t available' }
+    ? { kind: 'create', title: `Create “${q}” with ${provider}`, disabled: !grokOk, reason: reason || `${provider} isn’t available` }
     : null
 
   return create ? [...appRows, ...actionRows, create] : [...appRows, ...actionRows]

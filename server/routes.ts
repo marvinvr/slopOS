@@ -4,15 +4,15 @@ import type { Router } from './router'
 import { bundleFor } from './apps/bundles'
 import { deleteApp, getApp, listApps } from './apps/registry'
 import { storageGet, storageGetAll, storageRemove, storageSet } from './apps/storage'
-import { getGrokStatus } from './grok'
+import { getGrokStatus } from './generator'
 import { proxyRequest } from './proxy'
 import { getSettings, putSettings } from './settings'
 
 const APP_ID = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 export function registerRoutes(router: Router): void {
-  router.get('/api/health', (ctx) => {
-    sendJson(ctx.res, 200, { ok: true, grok: getGrokStatus() })
+  router.get('/api/health', async (ctx) => {
+    sendJson(ctx.res, 200, { ok: true, grok: await getGrokStatus() })
   })
 
   router.get('/api/apps', async (ctx) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import { applyTheme, resolveTheme } from '../design/theme'
 import { cycleWallpaper, toggleDarkMode } from './actions'
+import { providerLabel, useGrokStatus } from './generation'
 import { Dock } from './dock/Dock'
 import { ShellDialogs } from './dialogs/Dialogs'
 import { AboutDialog } from './menu/AboutDialog'
@@ -18,6 +19,7 @@ import { WindowManager } from './window/WindowManager'
 
 export function Desktop() {
   const loaded = useShell((state) => state.loaded)
+  const provider = providerLabel(useGrokStatus().provider)
   const apps = useShell((state) => state.apps)
   const interacting = useShell((state) => state.interacting)
   const theme = useShell((state) => state.theme)
@@ -62,7 +64,7 @@ export function Desktop() {
     { type: 'item', label: 'Show All Apps', onSelect: () => useShell.getState().setDrawerOpen(true) },
     {
       type: 'item',
-      label: 'New App with Grok…',
+      label: `New App with ${provider}…`,
       onSelect: () => {
         const shell = useShell.getState()
         shell.setDrawerPrompt(true)

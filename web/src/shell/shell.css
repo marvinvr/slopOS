@@ -420,15 +420,15 @@ body {
   color: var(--slop-warning);
 }
 
-.shell-grok.is-ready {
+.shell-gen.is-ready {
   color: var(--slop-success);
 }
 
-.shell-grok.is-busy {
+.shell-gen.is-busy {
   color: var(--slop-warning);
 }
 
-.shell-grok.is-off {
+.shell-gen.is-off {
   color: var(--slop-fg-subtle);
 }
 
@@ -1459,6 +1459,11 @@ button.shell-drawer-app > span:not(.shell-tile) {
 .shell-history-row span {
   color: var(--slop-fg-subtle);
   font-size: var(--slop-text-xs);
+}
+
+.shell-history-restore {
+  align-self: flex-start;
+  margin-top: 6px;
 }
 
 .shell-welcome {

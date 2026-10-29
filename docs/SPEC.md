@@ -212,7 +212,9 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
   the official TypeScript client `@agentclientprotocol/sdk` (JSON-RPC: initialize, session/new with cwd = the per-app
   sandbox workspace, session/prompt with streaming session/update notifications, session/cancel, model
   `${SLOPOS_GROK_MODEL:-grok-4.7}` / effort `${SLOPOS_GROK_EFFORT:-medium}` per session, permission requests answered
-  by slopOS: allow only file read/write/edit inside the workspace, deny shell/web/everything else). Avoids the ~6 s
+  by slopOS: allow only file read/write/edit inside the workspace, deny shell/web/everything else). After `session/new`,
+  `session/load`, and an in-memory resume, slopOS calls `session/set_config_option` for `model` and `reasoning_effort`.
+  The CLI flag loses to the user's own config in ACP mode; the protocol call is what makes the slopOS setting stick. Avoids the ~6 s
   per-call startup, supports cancel, and keeps one session per app for coherent follow-up generations (edit/fix/views).
   Child env adds `GROK_CLAUDE_MCPS_ENABLED=0` and `GROK_MEMORY=0` (so the user's own skills/MCP servers/memory don't
   leak in). Restart the process if it dies; if ACP cannot start/initialize, the provider reports
@@ -227,8 +229,10 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
 Common pipeline (provider-independent): workspace `data/workspaces/<appId>/` with `TASK.md`, `APP_SDK.md`, current
 `App.tsx` when editing; the provider edits `App.tsx` (or `View.tsx`) + `manifest.json` (+ `world.json`); the server
 validates (imports whitelist, default export, esbuild compile) and on failure resumes the session with the errors, up to
-3 attempts. Job queue with concurrency `SLOPOS_CONCURRENCY` (default 2), timeout `SLOPOS_TIMEOUT_MS` (default 6 min),
-cancel. Availability probe at startup + cached 60s; auth failures → clear "<Provider> isn't signed in — run `<cli>`
+3 attempts. Job queue with concurrency `SLOPOS_CONCURRENCY` (default 2). Timeouts are per kind: app 10 min
+(`SLOPOS_TIMEOUT_MS_APP`), view 5 min (`SLOPOS_TIMEOUT_MS_VIEW`), content 90 s (`SLOPOS_TIMEOUT_MS_CONTENT`),
+route 60 s (`SLOPOS_TIMEOUT_MS_ROUTE`). A set per-kind value wins; `SLOPOS_TIMEOUT_MS` covers any kind without one.
+Cancel stays. Availability probe at startup + cached 60s; auth failures → clear "<Provider> isn't signed in — run `<cli>`
 once in a terminal" state; never work around auth. UI copy names the active provider ("Generate with Grok" /
 "with Codex" / "with Claude").
 
@@ -307,8 +311,7 @@ POST /api/reset {confirm: "RESET"}                wipe the whole generated world
   summary + its views + related entities + other apps' names/purposes) so results are coherent with what exists.
   After each generation Grok also writes `world.json` (entities/summary deltas) in its workspace; the server merges it.
 - **Models per kind** (grok defaults; overridable per provider and kind, e.g. `SLOPOS_GROK_MODEL_CONTENT`): app `grok-4.7`/medium,
-  view `grok-4.7`/medium, content `grok-4.7-build-fast`/low with `--json-schema` and no tools. Queue concurrency `SLOPOS_CONCURRENCY` (default 2), app jobs prioritized after
-  interactive view/content jobs only if they were started earlier (FIFO otherwise).
+  view `grok-4.7`/medium, content `grok-4.7-build-fast`/low with no tools. Codex and Claude can pass a JSON schema flag; Grok ACP cannot, so the schema goes in the prompt and the server validates it. Queue concurrency `SLOPOS_CONCURRENCY` (default 2). Interactive view/content/route jobs start before app jobs that are still queued (FIFO inside each class, no preemption).
 - **Persistence = continue where you left off:** apps, views, content, world, app storage, open windows with geometry
   and each window's screen stack all survive restarts and reloads.
 - **Reset slopOS:** logo menu → confirm dialog ("This erases every app and everything in this world") → `POST /api/reset`
@@ -338,11 +341,17 @@ Small deviations from the paragraphs above, recorded so later passes don't trip 
 - `GET /api/apps` returns a JSON array of manifests. `GET /api/apps/:id` returns `{ manifest, source }`.
 - Storage bodies are `{ found: true, value }` for `GET /api/storage/:appId/:key` and `{ value }` for `PUT`. A missing key is `200 { found: false }` (not 404) so a first launch does not log a network error. The SDK treats `found: false` as "use the initial value". `GET /api/storage/:appId` returns `{ data }`. `DELETE /api/storage/:appId/:key` exists so `storage.remove` works.
 - `POST /api/proxy` allows `GET` and `POST` only, `http:`/`https:` only, no credentials in the URL, 15s timeout, 1MB response. The JSON result is `{ status, headers, body }`.
-- Generation routes (`/api/apps/generate`, edit, regenerate, fix, revert, `/api/jobs`, `/api/jobs/:id/events`) answer `501 { error: 'not implemented yet' }` from `server/grok/index.ts`. Health reports `{ available: false, reason: 'not implemented yet', model, effort }`. Pass C replaces that module.
+- Generation is implemented in `server/generator/`. Health is `{ ok, grok: { available, loggedIn, model, effort, reason, provider } }`. The object is still called `grok`; `provider` is `grok`, `codex`, `claude`, or `mock`.
+- Grok content and route turns do not use `--json-schema`. ACP has no schema flag, so the schema is in the prompt and the server checks the JSON (one retry). Codex uses `--output-schema`. Claude uses the Agent SDK `outputFormat`.
+- `session/load` is used only when the Grok agent advertises `loadSession`. Otherwise the session id lives only as long as that ACP process.
+- Interactive jobs (view, content, route) are picked before app jobs that have not started. A running job is not preempted. Order inside each class is FIFO.
+- `SLOPOS_DATA_DIR` selects the data directory. It is read when the server process starts, so it has to be in the environment rather than applied later from `.env`. `SLOPOS_MOCK_MS` sets the mock stream length (default 6000).
+- Per-kind model and effort: `SLOPOS_<P>_MODEL_<KIND>` and `SLOPOS_<P>_EFFORT_<KIND>`. For grok, content and route stay on the faster built-in default unless that kind override is set. Codex and claude omit `-m` / `model` when the model is unset, so the CLI's own default is used. Grok also applies model and effort with `session/set_config_option` (`model`, `reasoning_effort`) after the session opens, because the user's CLI config wins over `--reasoning-effort` in ACP mode.
+- Job timeouts: app 10 min, view 5 min, content 90 s, route 60 s. `SLOPOS_TIMEOUT_MS_<KIND>` overrides that kind. `SLOPOS_TIMEOUT_MS` is the fallback for kinds without their own value.
 - Fixture apps under `fixtures/apps/` load only when `SLOPOS_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
 - The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.
 - Each saved window may also carry `screens`: the in-window stack (`{ id, title, viewId, intent?, params?, context? }[]`), written by the app via `screens.state` and restored into the iframe on `ready`.
-- `POST /api/gen` is owned by pass C. Until that lands, `SLOPOS_GROK_MOCK=1` (alias `SLOP_GROK_MOCK=1`) registers `server/gen-mock.ts` ahead of the grok stub and serves canned `POST /api/gen`, `GET /api/jobs/:id/events`, and `GET /api/apps/:id/views/:viewId/bundle.js`. Leave the flag off once the real generator handles those routes.
+- `POST /api/gen`, `GET /api/jobs/:id/events`, and `GET /api/apps/:id/views/:viewId/bundle.js` are served by `server/generator/`. A cached hit is `{ cached: true, result }`; otherwise the response is `{ jobId }` and the job SSE ends with `{ type: 'done', result }`. Mock generations use `SLOPOS_GENERATOR=mock`. There is no `SLOPOS_GROK_MOCK` switch.
 
 ### Full screen ("jump into slopOS")
 - Browser Fullscreen API on `document.documentElement`. Toggle from the logo menu ("Enter Full Screen" / "Exit Full

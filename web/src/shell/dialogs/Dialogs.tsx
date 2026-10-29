@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../design/kit'
 import { deleteApp, resetWorld } from '../actions'
+import { restoreAppVersion } from '../generation'
 import { pushLayer } from '../layers'
 import { useShell } from '../store'
 
@@ -87,13 +88,16 @@ function DeleteDialog({ appId, onClose }: { appId: string; onClose: () => void }
   )
 }
 
-type HistoryRow = { label: string; detail?: string }
+type HistoryRow = { label: string; detail?: string; version?: number }
 
 function HistoryDialog({ appId, onClose }: { appId: string; onClose: () => void }) {
   const name = useShell((state) => state.apps.find((app) => app.id === appId)?.name) || 'App'
   const [rows, setRows] = useState<HistoryRow[] | null>(null)
   const [version, setVersion] = useState<number | null>(null)
+  const [fixture, setFixture] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
 
   const closeRef = useRef(onClose)
   closeRef.current = onClose
@@ -110,6 +114,7 @@ function HistoryDialog({ appId, onClose }: { appId: string; onClose: () => void 
         if (cancel) return
         const manifest = body.manifest ?? {}
         if (typeof manifest.version === 'number') setVersion(manifest.version)
+        setFixture(manifest.fixture === true)
         setRows(readHistory(manifest))
       })
       .catch(() => {
@@ -119,6 +124,17 @@ function HistoryDialog({ appId, onClose }: { appId: string; onClose: () => void 
       cancel = true
     }
   }, [appId])
+
+  const restore = (target: number) => {
+    setBusy(true)
+    setNote('')
+    void restoreAppVersion(appId, target)
+      .then(() => onClose())
+      .catch((err: unknown) => {
+        setNote(err instanceof Error ? err.message : 'Could not restore that version')
+        setBusy(false)
+      })
+  }
 
   return (
     <div className="shell-confirm-backdrop" onPointerDown={onClose}>
@@ -132,9 +148,17 @@ function HistoryDialog({ appId, onClose }: { appId: string; onClose: () => void 
             <div key={index} className="shell-history-row">
               {row.detail ? <span>{row.detail}</span> : null}
               <strong>{row.label}</strong>
+              {!fixture && typeof row.version === 'number' && row.version !== version ? (
+                <div className="shell-history-restore">
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => restore(row.version!)}>
+                    Restore
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
+        {note ? <p>{note}</p> : null}
         <div className="shell-confirm-actions">
           <Button variant="primary" onClick={onClose}>
             Done
@@ -159,10 +183,11 @@ function readHistory(manifest: Record<string, unknown>): HistoryRow[] {
       const record = entry as Record<string, unknown>
       const text = typeof record.prompt === 'string' ? record.prompt : typeof record.text === 'string' ? record.text : ''
       if (!text) return
-      const detail = typeof record.version === 'number' ? `Version ${record.version}` : `Edit ${index + 1}`
-      rows.push({ label: text, detail })
+      const rowVersion = typeof record.version === 'number' ? record.version : undefined
+      const detail = rowVersion ? `Version ${rowVersion}` : `Edit ${index + 1}`
+      rows.push({ label: text, detail, version: rowVersion })
     })
   }
-  if (!rows.length && prompt) rows.push({ label: prompt, detail: version ? `Version ${version}` : 'Original' })
+  if (!rows.length && prompt) rows.push({ label: prompt, detail: version ? `Version ${version}` : 'Original', version })
   return rows
 }

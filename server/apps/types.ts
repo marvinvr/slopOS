@@ -19,8 +19,8 @@ export type AppManifest = {
   updatedAt?: string
   /** Original generation prompt, when the app was generated. */
   prompt?: string
-  /** Prompt history. Pass C appends edit / regenerate / fix entries. */
-  prompts?: { at: string; prompt: string; kind?: string }[]
+  /** Prompt history. Each entry records the kind, the text, the version it produced, and when. */
+  prompts?: { at: string; prompt: string; kind?: string; version?: number }[]
   /** True when the app was loaded from fixtures/apps via SLOPOS_FIXTURES=1. */
   fixture?: boolean
 }
