@@ -15,6 +15,8 @@ export type SavedWindow = {
   maximized: boolean
   z: number
   restore: SavedRect | null
+  /** Opaque per-window screen stack. Passed through unchanged. */
+  screens?: unknown
 }
 
 export type Settings = {
@@ -81,7 +83,7 @@ function normalize(raw: unknown): Settings {
 function normalizeWindow(raw: unknown): SavedWindow | null {
   if (!isObject(raw)) return null
   if (typeof raw.id !== 'string' || typeof raw.appId !== 'string') return null
-  return {
+  const saved: SavedWindow = {
     id: raw.id,
     appId: raw.appId,
     x: finite(raw.x, 80),
@@ -93,6 +95,8 @@ function normalizeWindow(raw: unknown): SavedWindow | null {
     z: finite(raw.z, 1),
     restore: normalizeRect(raw.restore),
   }
+  if (raw.screens !== undefined) saved.screens = raw.screens
+  return saved
 }
 
 function normalizeRect(raw: unknown): SavedRect | null {
