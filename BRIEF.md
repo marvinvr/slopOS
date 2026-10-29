@@ -10,7 +10,10 @@ Build slopOS: a web-based desktop "operating system" whose apps are procedurally
 - Generated apps persist (server-side, e.g. a JSON/SQLite store + files) and show up in the drawer/search like built-ins; delete/regenerate/edit-with-prompt.
 
 ## Grok integration
-- Backend uses the xAI Grok SDK/API (model: a Grok model with medium reasoning effort; make model + effort configurable). Key from `.env` `XAI_API_KEY` (never commit it). Without a key, the app must still run fully with built-in apps and a clear "Grok not configured" state.
+- Apps are generated through Marvin's Grok **subscription** via the local `grok` CLI in headless mode, run by the slopOS server as a subprocess, e.g. `grok -p '<prompt>' -m grok-4.7 --reasoning-effort medium --output-format streaming-json` (see `grok --help`). Model + effort configurable (env / config), defaults `grok-4.7` / `medium`.
+- **No xAI API/SDK, no API keys.** Never set `XAI_API_KEY` / `GROK_API_KEY` anywhere (that would bill via the API instead of the subscription); the server strips them from the child env.
+- Each job runs with cwd = a per-app workspace dir, tools disabled or limited to that dir (no web, no subagents, no shell), a sensible timeout, one job at a time (small queue). Progress is streamed to the UI.
+- If the `grok` CLI is missing or not logged in (headless calls fail with auth), the app still runs fully with built-in apps and shows a clear "Grok not available" state; auth problems are reported to Marvin, never worked around.
 - An easy, well-defined app interface so Grok can create apps in React: e.g. a single-file React component with a small `@slop/sdk` (window title/size, storage per app, notifications, theme tokens, fetch proxy if needed). Generation pipeline: prompt → Grok writes the component → validate/compile (esbuild/sucrase) → sandboxed load (iframe or isolated module) → on error, feed the error back to Grok for a fix attempt.
 - Coherent style: a design system (CSS variables/tokens + a tiny component kit: Button, Input, List, Card, Tabs, etc.) that the SDK exposes and the generation prompt strongly instructs Grok to use, so generated apps look native to slopOS. Only "very slightly" opinionated, not heavy.
 
