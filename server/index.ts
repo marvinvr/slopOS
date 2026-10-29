@@ -1,9 +1,9 @@
 import { createServer } from 'node:http'
 import fs from 'node:fs/promises'
-import { appsDir, storageDir, workspacesDir } from './paths'
+import { appsDir, storageDir, workspacesDir, worldDir } from './paths'
 import { loadEnv } from './env'
 import { applyCors, sendJson } from './http'
-import { registerGrokRoutes } from './grok'
+import { initGenerator, registerGeneratorRoutes } from './generator'
 import { registerRoutes } from './routes'
 import { createRouter } from './router'
 import { serveRuntime, serveShell } from './static'
@@ -14,11 +14,12 @@ async function ensureDataDirs(): Promise<void> {
   await fs.mkdir(appsDir, { recursive: true })
   await fs.mkdir(storageDir, { recursive: true })
   await fs.mkdir(workspacesDir, { recursive: true })
+  await fs.mkdir(worldDir, { recursive: true })
 }
 
 const router = createRouter()
 registerRoutes(router)
-registerGrokRoutes(router)
+registerGeneratorRoutes(router)
 
 const server = createServer((req, res) => {
   void (async () => {
@@ -43,6 +44,7 @@ const port = Number(process.env.PORT) || 4747
 const host = '0.0.0.0'
 
 await ensureDataDirs()
+await initGenerator()
 server.listen(port, host, () => {
   console.log(`slopOS listening on http://${host}:${port}`)
 })

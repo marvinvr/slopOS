@@ -302,8 +302,7 @@ POST /api/reset {confirm: "RESET"}                wipe the whole generated world
   summary + its views + related entities + other apps' names/purposes) so results are coherent with what exists.
   After each generation Grok also writes `world.json` (entities/summary deltas) in its workspace; the server merges it.
 - **Models per kind** (grok defaults; overridable per provider and kind, e.g. `SLOPOS_GROK_MODEL_CONTENT`): app `grok-4.7`/medium,
-  view `grok-4.7`/medium, content `grok-4.7-build-fast`/low with `--json-schema` and no tools. Queue concurrency `SLOPOS_CONCURRENCY` (default 2), app jobs prioritized after
-  interactive view/content jobs only if they were started earlier (FIFO otherwise).
+  view `grok-4.7`/medium, content `grok-4.7-build-fast`/low with no tools. Codex and Claude can pass a JSON schema flag; Grok ACP cannot, so the schema goes in the prompt and the server validates it. Queue concurrency `SLOPOS_CONCURRENCY` (default 2). Interactive view/content/route jobs start before app jobs that are still queued (FIFO inside each class, no preemption).
 - **Persistence = continue where you left off:** apps, views, content, world, app storage, open windows with geometry
   and each window's screen stack all survive restarts and reloads.
 - **Reset slopOS:** logo menu → confirm dialog ("This erases every app and everything in this world") → `POST /api/reset`
@@ -333,7 +332,12 @@ Small deviations from the paragraphs above, recorded so later passes don't trip 
 - `GET /api/apps` returns a JSON array of manifests. `GET /api/apps/:id` returns `{ manifest, source }`.
 - Storage bodies are `{ found: true, value }` for `GET /api/storage/:appId/:key` and `{ value }` for `PUT`. A missing key is `200 { found: false }` (not 404) so a first launch does not log a network error. The SDK treats `found: false` as "use the initial value". `GET /api/storage/:appId` returns `{ data }`. `DELETE /api/storage/:appId/:key` exists so `storage.remove` works.
 - `POST /api/proxy` allows `GET` and `POST` only, `http:`/`https:` only, no credentials in the URL, 15s timeout, 1MB response. The JSON result is `{ status, headers, body }`.
-- Generation routes (`/api/apps/generate`, edit, regenerate, fix, revert, `/api/jobs`, `/api/jobs/:id/events`) answer `501 { error: 'not implemented yet' }` from `server/grok/index.ts`. Health reports `{ available: false, reason: 'not implemented yet', model, effort }`. Pass C replaces that module.
+- Generation is implemented in `server/generator/`. Health is `{ ok, grok: { available, loggedIn, model, effort, reason, provider } }`. The object is still called `grok`; `provider` is `grok`, `codex`, `claude`, or `mock`.
+- Grok content and route turns do not use `--json-schema`. ACP has no schema flag, so the schema is in the prompt and the server checks the JSON (one retry). Codex uses `--output-schema`. Claude uses the Agent SDK `outputFormat`.
+- `session/load` is used only when the Grok agent advertises `loadSession`. Otherwise the session id lives only as long as that ACP process.
+- Interactive jobs (view, content, route) are picked before app jobs that have not started. A running job is not preempted. Order inside each class is FIFO.
+- `SLOPOS_DATA_DIR` selects the data directory. It is read when the server process starts, so it has to be in the environment rather than applied later from `.env`. `SLOPOS_MOCK_MS` sets the mock stream length (default 6000).
+- Per-kind model and effort: `SLOPOS_<P>_MODEL_<KIND>` and `SLOPOS_<P>_EFFORT_<KIND>`. For grok, content and route stay on the faster built-in default unless that kind override is set. Codex and claude omit `-m` / `model` when the model is unset, so the CLI's own default is used.
 - Fixture apps under `fixtures/apps/` load only when `SLOPOS_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
 - The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.
 
