@@ -199,6 +199,9 @@ type GenEvent = { type: 'status'|'thinking'|'text'|'tool'|'log'; text: string }
               | { type: 'error'; message: string; auth?: boolean }
 ```
 
+**One path per provider, no fallbacks:** grok = ACP only, claude = Claude Agent SDK only, codex = `codex exec --json` only.
+No silent fallback between providers or modes; failures surface as clear errors in the UI.
+
 Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>_BIN`, `SLOPOS_<P>_MODEL`, `SLOPOS_<P>_EFFORT`):
 - **grok** (default): a long-lived `grok agent stdio` process (Grok CLI ACP mode, SuperGrok login, no API key) driven with
   the official TypeScript client `@agentclientprotocol/sdk` (JSON-RPC: initialize, session/new with cwd = the per-app
@@ -207,8 +210,8 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
   by slopOS: allow only file read/write/edit inside the workspace, deny shell/web/everything else). Avoids the ~6 s
   per-call startup, supports cancel, and keeps one session per app for coherent follow-up generations (edit/fix/views).
   Child env adds `GROK_CLAUDE_MCPS_ENABLED=0` and `GROK_MEMORY=0` (so the user's own skills/MCP servers/memory don't
-  leak in). Restart the process transparently if it dies. **Fallback:** if ACP fails to start/initialize, spawn
-  `grok -p … --output-format streaming-json --cwd <workspace> --no-subagents --disable-web-search` per job (same env).
+  leak in). Restart the process if it dies; if ACP cannot start/initialize, the provider reports
+  unavailable with the error (shown clearly in the UI) — there is NO `grok -p` fallback.
 - **codex**: `codex exec --json` (ChatGPT login), `-m`/`-c model_reasoning_effort=…`, sandbox restricted to the workspace
   (`--sandbox workspace-write`, `-C <workspace>`, no network), `codex exec resume <id>` for fixes, output schema flag for content if available.
 - **claude**: the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`, uses the local Claude Code login, no API key), cwd =
