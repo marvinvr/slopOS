@@ -1,0 +1,7 @@
+agents:
+  - name: Opus Medium
+    cmd: claude
+    args: ["--permission-mode", "auto", "--model", "opus", "--effort", "medium"]
+processes:
+  - name: slopOS
+    cmd: npm run start
