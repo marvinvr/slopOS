@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Kbd } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
@@ -55,6 +55,9 @@ function nextEnabled(items: MenuNode[], from: number, delta: number): number {
 export function MenuList({ items, onClose, onExitLeft, onExitRight, onDismissSub }: Props) {
   const [index, setIndex] = useState(() => nextEnabled(items, -1, 1))
   const [subOpen, setSubOpen] = useState(false)
+  const [side, setSide] = useState<'right' | 'left'>('right')
+  const [nudge, setNudge] = useState(0)
+  const subBox = useRef<HTMLDivElement>(null)
   const itemsRef = useRef(items)
   const indexRef = useRef(index)
   const subRef = useRef(subOpen)
@@ -63,6 +66,31 @@ export function MenuList({ items, onClose, onExitLeft, onExitRight, onDismissSub
   indexRef.current = index
   subRef.current = subOpen
   cb.current = { onClose, onExitLeft, onExitRight, onDismissSub }
+
+  useLayoutEffect(() => {
+    if (!subOpen) return
+    const row = subBox.current?.parentElement
+    const pop = subBox.current?.querySelector('.shell-menu-pop')
+    if (!row || !(pop instanceof HTMLElement)) return
+    const width = pop.getBoundingClientRect().width
+    const edge = row.getBoundingClientRect()
+    const margin = 8
+    const fitsRight = edge.right + width <= window.innerWidth - margin
+    const fitsLeft = edge.left - width >= margin
+    if (fitsRight) {
+      setSide('right')
+      setNudge(0)
+      return
+    }
+    if (fitsLeft) {
+      setSide('left')
+      setNudge(0)
+      return
+    }
+    const overflow = edge.right + width - (window.innerWidth - margin)
+    setSide('right')
+    setNudge(Math.max(0, Math.round(overflow)))
+  }, [subOpen, index, items])
 
   useEffect(() => {
     setIndex((current) => {
@@ -205,7 +233,7 @@ export function MenuList({ items, onClose, onExitLeft, onExitRight, onDismissSub
                 </span>
               </button>
               {active && subOpen ? (
-                <div className="shell-submenu">
+                <div ref={subBox} className={cx('shell-submenu', side === 'left' && 'is-flip', nudge > 0 && 'is-nudge')} style={nudge > 0 ? ({ '--sub-nudge': `${nudge}px` } as CSSProperties) : undefined}>
                   <div className="shell-menu-pop" role="presentation">
                     <MenuList items={item.items} onClose={onClose} onExitLeft={() => setSubOpen(false)} onDismissSub={() => setSubOpen(false)} />
                   </div>

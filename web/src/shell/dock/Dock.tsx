@@ -85,6 +85,7 @@ function DockApp({ app, live, menuOpen, onMenu }: { app: AppManifest; live: bool
     <button
       type="button"
       className={cx('shell-dock-app', menuOpen && 'is-menu')}
+      data-app-id={app.id}
       data-dock-app={app.id}
       aria-label={app.name}
       onClick={() => openApp(app.id)}

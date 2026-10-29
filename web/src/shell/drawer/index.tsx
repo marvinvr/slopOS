@@ -23,6 +23,7 @@ export function Drawer() {
   const setShellPrompt = useShell((state) => state.setShellPrompt)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
+  const [byKeyboard, setByKeyboard] = useState(false)
   const [composing, setComposing] = useState(false)
   const [draft, setDraft] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; appId: string } | null>(null)
@@ -49,6 +50,7 @@ export function Drawer() {
     if (!open) return
     setQuery('')
     setActive(0)
+    setByKeyboard(false)
     setMenu(null)
     if (useShell.getState().drawerPrompt) return
     const timer = window.setTimeout(() => searchRef.current?.focus(), 30)
@@ -72,9 +74,10 @@ export function Drawer() {
     if (!el || !open) return
     const measure = () => {
       const styles = getComputedStyle(el)
-      const gap = Number.parseFloat(styles.columnGap) || 8
-      const min = 96
-      setCols(Math.max(1, Math.floor((el.clientWidth + gap) / (min + gap))))
+      const gap = Number.parseFloat(styles.columnGap) || 18
+      const tile = el.querySelector('.shell-drawer-app')
+      const tileWidth = tile?.getBoundingClientRect().width || 112
+      setCols(Math.max(1, Math.floor((el.clientWidth + gap) / (tileWidth + gap))))
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -85,6 +88,7 @@ export function Drawer() {
   if (!open) return null
 
   function move(delta: number) {
+    setByKeyboard(true)
     setActive((current) => (current + delta + count) % count)
   }
 
@@ -204,9 +208,9 @@ export function Drawer() {
               />
             </form>
           ) : (
-            <button type="button" className={cx('shell-drawer-app', active === 0 && 'is-selected')} onClick={() => activate(0)} onMouseEnter={() => setActive(0)}>
+            <button type="button" className={cx('shell-drawer-app', byKeyboard && active === 0 && 'is-kbd')} onClick={() => activate(0)} onMouseEnter={() => { setByKeyboard(false); setActive(0) }}>
               <span className="shell-tile shell-new-tile">
-                <Icon name="Plus" size={22} />
+                <Icon name="Plus" size={26} />
               </span>
               <span>New app…</span>
             </button>
@@ -214,12 +218,16 @@ export function Drawer() {
           {shown.map((app, index) => (
             <div
               key={app.id}
-              className={cx('shell-drawer-app', active === index + 1 && 'is-selected')}
-              onMouseEnter={() => setActive(index + 1)}
+              data-app-id={app.id}
+              className={cx('shell-drawer-app', byKeyboard && active === index + 1 && 'is-kbd')}
+              onMouseEnter={() => {
+                setByKeyboard(false)
+                setActive(index + 1)
+              }}
               onContextMenu={(event) => openMenu(event, app.id)}
             >
               <button type="button" className="shell-drawer-hit" onClick={() => activate(index + 1)}>
-                <AppTile id={app.id} icon={app.icon} tint={app.tint} size={52} />
+                <AppTile id={app.id} icon={app.icon} tint={app.tint} size={60} />
                 <span>{app.name}</span>
               </button>
               <button

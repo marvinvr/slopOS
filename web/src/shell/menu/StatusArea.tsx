@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../design/kit'
-import { GenerationActivity, useGrokStatus } from '../generation'
+import { cx } from '../../design/kit/cx'
+import { GenerationActivity, useGrokStatus, type GrokStatus } from '../generation'
 import { pushLayer } from '../layers'
 
 const WEEK = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+
+type GeneratorPhase = 'is-ready' | 'is-busy' | 'is-off'
+
+function generatorView(grok: GrokStatus): { phase: GeneratorPhase; label: string } {
+  const busy = Boolean((grok as GrokStatus & { busy?: boolean }).busy)
+  if (busy) return { phase: 'is-busy', label: 'Grok is writing…' }
+  if (grok.available) {
+    const model = grok.model ? ` · ${grok.model}` : ''
+    return { phase: 'is-ready', label: `Grok ready${model}` }
+  }
+  const reason = grok.reason ? ` · ${grok.reason}` : ''
+  return { phase: 'is-off', label: `Grok unavailable${reason}` }
+}
 
 export function StatusArea() {
   const [now, setNow] = useState(() => new Date())
@@ -65,15 +79,23 @@ export function StatusArea() {
   const hours = String(now.getHours()).padStart(2, '0')
   const minutes = String(now.getMinutes()).padStart(2, '0')
   const clock = `${weekday} ${now.getDate()} ${month}  ${hours}:${minutes}`
-  const grokLabel = grok.available ? `Grok ready${grok.model ? ` · ${grok.model}` : ''}` : grok.reason || 'Grok unavailable'
+  const generator = generatorView(grok)
 
   return (
     <div className="shell-status">
       <GenerationActivity />
-      <span className={online ? 'shell-status-icon' : 'shell-status-icon is-down'} role="img" aria-label={online ? 'Connected' : 'Can’t reach slopOS'} title={online ? 'Connected' : 'Can’t reach slopOS'}>
+      <span className={online ? 'shell-status-icon' : 'shell-status-icon is-down'} role="img" tabIndex={0} aria-label={online ? 'Connected' : 'Can’t reach slopOS'}>
         <Icon name={online ? 'Wifi' : 'WifiOff'} size={14} />
+        <span className="shell-status-tip" role="tooltip">
+          {online ? 'Connected' : 'Can’t reach slopOS'}
+        </span>
       </span>
-      <span className={grok.available ? 'shell-grok-dot is-on' : 'shell-grok-dot'} role="img" aria-label={grokLabel} title={grokLabel} />
+      <span className={cx('shell-status-icon', 'shell-grok', generator.phase)} role="img" tabIndex={0} aria-label={generator.label}>
+        <Icon name="Sparkles" size={14} />
+        <span className="shell-status-tip" role="tooltip">
+          {generator.label}
+        </span>
+      </span>
       <button type="button" className="shell-clock" aria-expanded={open} aria-label="Date and time" onClick={() => setOpen((value) => !value)}>
         <span>{clock}</span>
       </button>

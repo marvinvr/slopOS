@@ -27,8 +27,11 @@ export function DrawerGlyph() {
 
 export function AppTile({ id, icon, tint, size = 46, className }: { id: string; icon: string; tint?: string; size?: number; className?: string }) {
   return (
-    <span className={className ? `shell-tile ${className}` : 'shell-tile'} style={{ width: size, height: size, background: tintFor(id, tint), borderRadius: size > 46 ? 14 : 13 }}>
-      <Icon name={icon} size={Math.round(size * 0.48)} strokeWidth={1.75} />
+    <span
+      className={className ? `shell-tile ${className}` : 'shell-tile'}
+      style={{ width: size, height: size, backgroundColor: tintFor(id, tint), borderRadius: Math.round(size * 0.28) }}
+    >
+      <Icon name={icon} size={Math.round(size * 0.46)} strokeWidth={1.75} />
     </span>
   )
 }

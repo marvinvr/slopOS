@@ -107,6 +107,7 @@ export function Spotlight() {
                 role="option"
                 aria-selected={index === active}
                 aria-disabled={row.kind === 'create' && row.disabled}
+                data-app-id={row.kind === 'app' ? row.app.id : undefined}
                 className={cx('shell-spot-row', index === active && 'is-active', row.kind === 'create' && row.disabled && 'is-disabled')}
                 onMouseEnter={() => setActive(index)}
                 onClick={() => activate(index)}

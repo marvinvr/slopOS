@@ -330,6 +330,20 @@ body {
   z-index: 2;
 }
 
+.shell-submenu.is-flip {
+  left: auto;
+  right: calc(100% - 6px);
+}
+
+.shell-submenu.is-nudge {
+  left: calc(100% - 6px - var(--sub-nudge, 0px));
+}
+
+.shell-submenu.is-flip > .shell-menu-pop {
+  left: auto;
+  right: 0;
+}
+
 .shell-menu-item.is-swatches {
   height: auto;
   min-height: 26px;
@@ -387,28 +401,57 @@ body {
 }
 
 .shell-status-icon {
+  position: relative;
   width: 22px;
   height: 22px;
   display: grid;
   place-items: center;
   color: var(--slop-fg-muted);
+  border-radius: 6px;
+  outline: none;
+}
+
+.shell-status-icon:focus-visible {
+  outline: 2px solid var(--slop-accent);
+  outline-offset: 1px;
 }
 
 .shell-status-icon.is-down {
   color: var(--slop-warning);
 }
 
-.shell-grok-dot {
-  width: 8px;
-  height: 8px;
-  margin: 0 6px;
-  border-radius: 50%;
-  background: var(--slop-fg-subtle);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+.shell-grok.is-ready {
+  color: var(--slop-success);
 }
 
-.shell-grok-dot.is-on {
-  background: var(--slop-success);
+.shell-grok.is-busy {
+  color: var(--slop-warning);
+}
+
+.shell-grok.is-off {
+  color: var(--slop-fg-subtle);
+}
+
+.shell-status-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: var(--slop-fg);
+  color: var(--slop-bg);
+  font-size: var(--slop-text-xs);
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 80;
+  transition: opacity 120ms ease 160ms;
+}
+
+.shell-status-icon:hover .shell-status-tip,
+.shell-status-icon:focus-visible .shell-status-tip {
+  opacity: 1;
 }
 
 .shell-search-btn {
@@ -547,7 +590,11 @@ body {
 
 .shell-tile {
   color: white;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.16);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 46%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 1px 2px rgba(40, 28, 18, 0.16);
 }
 
 .shell-drawer-glyph {
@@ -972,7 +1019,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 11vh 28px 48px;
+  padding: 12vh 32px 64px;
   overflow: auto;
   background: transparent;
   border: 0;
@@ -1018,16 +1065,18 @@ body {
 }
 
 .shell-drawer-grid {
-  width: min(880px, 100%);
-  margin-top: 28px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 16px 8px;
+  width: min(760px, 100%);
+  margin-top: 36px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-content: start;
+  gap: 28px 16px;
 }
 
 .shell-drawer-app {
   position: relative;
+  width: 112px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -1035,14 +1084,14 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 8px 4px 6px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 8px 6px 4px;
+  border-radius: 16px;
   cursor: default;
 }
 
 button.shell-drawer-app {
-  width: 100%;
+  width: 112px;
 }
 
 .shell-drawer-hit {
@@ -1059,13 +1108,14 @@ button.shell-drawer-app {
   cursor: default;
 }
 
-.shell-drawer-app.is-selected {
-  background: var(--slop-accent-soft);
+.shell-drawer-app.is-kbd {
+  outline: 2px solid var(--slop-accent);
+  outline-offset: 2px;
 }
 
 .shell-drawer-hit > span:not(.shell-tile),
 button.shell-drawer-app > span:not(.shell-tile) {
-  font-size: var(--slop-text-xs);
+  font-size: var(--slop-text-sm);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1089,25 +1139,43 @@ button.shell-drawer-app > span:not(.shell-tile) {
 }
 
 .shell-drawer-app:hover .shell-drawer-more,
-.shell-drawer-app.is-selected .shell-drawer-more,
+.shell-drawer-app.is-kbd .shell-drawer-more,
 .shell-drawer-more:focus-visible {
   opacity: 1;
 }
 
+.shell-drawer .shell-tile {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+}
+
+.shell-drawer-app:hover .shell-tile:not(.shell-new-tile) {
+  transform: scale(1.04);
+}
+
 .shell-new-tile {
-  background: var(--slop-bg-elevated);
-  color: var(--slop-fg);
-  border: 1px dashed color-mix(in srgb, var(--slop-fg) 28%, transparent);
+  background: transparent;
+  background-image: none;
+  color: var(--slop-fg-muted);
+  border: 1.5px dashed color-mix(in srgb, var(--slop-fg) 32%, transparent);
   box-shadow: none;
 }
 
+.shell-drawer-app:hover .shell-new-tile {
+  color: var(--slop-fg);
+  border-color: color-mix(in srgb, var(--slop-fg) 48%, transparent);
+  transform: none;
+}
+
 .shell-drawer-compose {
-  grid-column: span 2;
+  flex: 1 0 100%;
+  width: min(360px, 100%);
   display: flex;
   align-items: center;
-  min-height: 84px;
-  padding: 8px;
-  border-radius: 12px;
+  min-height: 72px;
+  padding: 8px 12px;
+  border-radius: 14px;
   background: var(--slop-bg-elevated);
   border: 1px solid var(--slop-border);
 }
@@ -1431,6 +1499,15 @@ button.shell-drawer-app > span:not(.shell-tile) {
   margin-top: 10px;
 }
 
+.shell-welcome .slop-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.shell-welcome .slop-btn:focus-visible {
+  outline: 2px solid var(--slop-accent-fg);
+  outline-offset: 3px;
+}
+
 .shell-welcome-stay {
   margin-top: 4px;
   border: 0;
@@ -1458,7 +1535,8 @@ button.shell-drawer-app > span:not(.shell-tile) {
   .shell-tile,
   .shell-drawer-glyph,
   .shell-tile.is-spring,
-  .shell-dock-tip {
+  .shell-dock-tip,
+  .shell-status-tip {
     animation: none;
     transition: none;
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '../../design/kit'
 import { enterFullscreen } from '../fullscreen'
 import { Mark } from '../icons'
@@ -6,10 +6,6 @@ import { markWelcome, welcomeSeen } from '../local'
 
 export function Welcome() {
   const [open, setOpen] = useState(() => !welcomeSeen())
-  const actionsRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    actionsRef.current?.querySelector('button')?.focus()
-  }, [])
   if (!open) return null
 
   function stay() {
@@ -31,7 +27,7 @@ export function Welcome() {
         </div>
         <h1>slopOS</h1>
         <p>Every app here is written by Grok, the moment you ask for it.</p>
-        <div className="shell-welcome-actions" ref={actionsRef}>
+        <div className="shell-welcome-actions">
           <Button variant="primary" onClick={() => void enter()}>
             Enter slopOS
           </Button>
