@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import { appsDir, storageDir, workspacesDir } from './paths'
 import { loadEnv } from './env'
 import { applyCors, sendJson } from './http'
+import { grokMockEnabled, registerGenMock } from './gen-mock'
 import { registerGrokRoutes } from './grok'
 import { registerRoutes } from './routes'
 import { createRouter } from './router'
@@ -18,6 +19,7 @@ async function ensureDataDirs(): Promise<void> {
 
 const router = createRouter()
 registerRoutes(router)
+if (grokMockEnabled()) registerGenMock(router)
 registerGrokRoutes(router)
 
 const server = createServer((req, res) => {
