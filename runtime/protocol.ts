@@ -24,3 +24,13 @@ export type MenuItem =
   | 'separator'
 
 export type MenuSpec = { label: string; items: MenuItem[] }
+
+/** A generated screen, persisted with its window and restored into the iframe. */
+export type PersistedScreen = {
+  id: string
+  title: string
+  viewId: string
+  intent?: string
+  params?: unknown
+  context?: unknown
+}
