@@ -350,6 +350,14 @@ body {
   border: 1px solid var(--slop-border);
 }
 
+.shell-launcher rect {
+  fill: currentColor;
+}
+
+.shell-launcher rect:nth-child(4) {
+  opacity: 0.45;
+}
+
 .shell-dock-app:hover .shell-tile,
 .shell-dock-btn:hover .shell-drawer-glyph {
   transform: scale(1.07);

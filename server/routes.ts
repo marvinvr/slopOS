@@ -63,8 +63,8 @@ export function registerRoutes(router: Router): void {
     const key = ctx.params.key
     if (!key) return sendJson(ctx.res, 400, { error: 'missing key' })
     const value = await storageGet(ctx.params.appId!, key)
-    if (value === undefined) return sendJson(ctx.res, 404, { error: 'not found' })
-    sendJson(ctx.res, 200, { value })
+    if (value === undefined) return sendJson(ctx.res, 200, { found: false })
+    sendJson(ctx.res, 200, { found: true, value })
   })
 
   router.put('/api/storage/:appId/:key', async (ctx) => {

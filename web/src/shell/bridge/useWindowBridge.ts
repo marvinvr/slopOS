@@ -89,8 +89,9 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
     case 'storage.get': {
       const key = String(payload.key ?? '')
       const res = await fetch(`/api/storage/${win.appId}/${encodeURIComponent(key)}`)
-      if (res.status === 404) reply({ value: undefined })
-      else reply(await res.json())
+      const body = (await res.json().catch(() => null)) as { found?: boolean; value?: unknown } | null
+      if (!res.ok || !body || body.found === false) reply({ found: false })
+      else reply(body)
       break
     }
     case 'storage.set':

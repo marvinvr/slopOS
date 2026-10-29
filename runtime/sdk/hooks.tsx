@@ -21,11 +21,12 @@ export function useTheme() {
   return { mode: ctx.mode, accent: ctx.accent }
 }
 
-type StorageReply = { value?: unknown }
+type StorageReply = { found?: boolean; value?: unknown }
 
 export const storage = {
   async get<T>(key: string): Promise<T | undefined> {
     const reply = await rpc<StorageReply>('storage.get', { key })
+    if (reply.found === false) return undefined
     return reply.value as T | undefined
   },
   async set(key: string, value: unknown): Promise<void> {

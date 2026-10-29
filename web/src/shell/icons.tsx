@@ -13,6 +13,18 @@ export function Mark({ size = 18 }: { size?: number }) {
   )
 }
 
+/** Dock launcher: four soft squares, not a stock icon. */
+export function DrawerGlyph() {
+  return (
+    <svg className="shell-launcher" width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+      <rect x="1" y="1" width="7.5" height="7.5" rx="2.2" />
+      <rect x="11.5" y="1" width="7.5" height="7.5" rx="2.2" />
+      <rect x="1" y="11.5" width="7.5" height="7.5" rx="2.2" />
+      <rect x="11.5" y="11.5" width="7.5" height="7.5" rx="2.2" />
+    </svg>
+  )
+}
+
 export function AppTile({ id, icon, tint, size = 46, className }: { id: string; icon: string; tint?: string; size?: number; className?: string }) {
   return (
     <span className={className ? `shell-tile ${className}` : 'shell-tile'} style={{ width: size, height: size, background: tintFor(id, tint), borderRadius: size > 46 ? 14 : 13 }}>

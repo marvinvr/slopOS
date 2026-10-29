@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Icon } from '../../design/kit'
-import { AppTile } from '../icons'
+import { AppTile, DrawerGlyph } from '../icons'
 import { openDrawer } from '../drawer'
 import { useShell } from '../store'
 
@@ -37,7 +36,7 @@ export function Dock() {
       {shown.length > 0 ? <div className="shell-dock-sep" /> : null}
       <button type="button" className="shell-dock-btn" aria-label="Apps" onClick={() => openDrawer()}>
         <span className="shell-drawer-glyph">
-          <Icon name="LayoutGrid" size={22} />
+          <DrawerGlyph />
         </span>
       </button>
     </nav>

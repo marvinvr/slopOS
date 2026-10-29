@@ -39,6 +39,7 @@ export async function serveShell(req: IncomingMessage, res: ServerResponse): Pro
   const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1)
   const file = safeJoin(webDir, rel)
   if (file && (await sendFile(req, res, file))) return true
+  if (url.pathname === '/favicon.ico' && (await sendFile(req, res, path.join(webDir, 'favicon.svg')))) return true
   if (rel.includes('.')) return false
   const index = path.join(webDir, 'index.html')
   return sendFile(req, res, index)
