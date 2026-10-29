@@ -186,3 +186,16 @@ app search, arrow keys + Enter, last row "Generate '<query>' with Grok". Drawer:
 Cmd/Ctrl+Space spotlight, Cmd/Ctrl+W close window, Cmd/Ctrl+M minimize, Esc closes popovers,
 Cmd/Ctrl+` cycle windows. Since browsers eat some Cmd shortcuts, Ctrl variants must always work too.
 Window state (open apps, positions) persists across reloads.
+
+## Foundation notes
+
+Small deviations from the paragraphs above, recorded so later passes don't trip on them:
+
+- `compileApp(source)` in `server/apps/compile.ts` is **async** (`Promise<{ ok: true, code } | { ok: false, errors }>`). esbuild's API is async. Pass C should await it. The cache key is `id + version + source hash`, so a version bump is not required for a source edit to recompile.
+- A failed compile is still served at `GET /api/apps/:id/bundle.js` as an ESM module that `throw`s the error text. The sandboxed frame has to load a script URL (import maps do not apply to blob URLs). Structured errors come from `compileApp` itself.
+- `GET /api/apps` returns a JSON array of manifests. `GET /api/apps/:id` returns `{ manifest, source }`.
+- Storage bodies are `{ value }` for `PUT` and `GET /api/storage/:appId/:key`. `GET /api/storage/:appId` returns `{ data }`. `DELETE /api/storage/:appId/:key` exists so `storage.remove` works. A missing key is `404`.
+- `POST /api/proxy` allows `GET` and `POST` only, `http:`/`https:` only, no credentials in the URL, 15s timeout, 1MB response. The JSON result is `{ status, headers, body }`.
+- Generation routes (`/api/apps/generate`, edit, regenerate, fix, revert, `/api/jobs`, `/api/jobs/:id/events`) answer `501 { error: 'not implemented yet' }` from `server/grok/index.ts`. Health reports `{ available: false, reason: 'not implemented yet', model, effort }`. Pass C replaces that module.
+- Fixture apps under `fixtures/apps/` load only when `SLOP_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
+- The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.

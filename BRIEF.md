@@ -21,3 +21,6 @@ Build slopOS: a web-based desktop "operating system" whose apps are procedurally
 - Web based. TypeScript. Single `npm run start` serves the built frontend + API on 0.0.0.0, port 4747 (so Marvin opens http://mac:4747 via Tailscale). `npm run dev` for development on another port.
 - mmux process `slopOS` (in mmux.yaml) runs `npm run start` and must stay up; restart it after builds.
 - Git: local repo, commit to `main` (no remote yet).
+
+## Style (Marvin, 2026-10-29 22:02)
+- A modern, slightly creative interpretation of macOS: familiar structure (menu bar, dock/launcher, traffic lights, spotlight), but with its own character. Not hyper-modern or flashy; tasteful, warm, a bit playful. The design kit and generated apps follow the same language.
