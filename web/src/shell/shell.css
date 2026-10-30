@@ -1179,32 +1179,25 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12vh 32px 64px;
+  padding: 44px 32px 64px;
   overflow: auto;
   background: transparent;
   border: 0;
   box-shadow: none;
 }
 
-.shell-drawer-title {
-  margin: 0 0 18px;
-  font-family: var(--slop-font-display);
-  font-weight: 520;
-  font-size: var(--slop-text-xl);
-  letter-spacing: -0.03em;
-}
-
 .shell-drawer-search {
-  width: min(440px, 100%);
-  height: 40px;
-  border-radius: 999px;
+  width: min(260px, 100%);
+  height: 32px;
+  border-radius: 9px;
   border: 1px solid var(--slop-border);
   background: var(--slop-chrome-bg);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
+  gap: 6px;
+  padding: 0 10px;
   color: var(--slop-fg-muted);
+  font-size: var(--slop-text-md);
 }
 
 .shell-drawer-search input,
@@ -1320,12 +1313,6 @@ button.shell-drawer-app > span:not(.shell-tile) {
 
 .shell-drawer-app:hover .shell-tile {
   transform: scale(1.04);
-}
-
-.shell-drawer-empty {
-  margin: 16px 0 0;
-  color: var(--slop-fg-muted);
-  font-size: var(--slop-text-sm);
 }
 
 .shell-spotlight {

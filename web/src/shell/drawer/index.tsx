@@ -2,22 +2,27 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { Icon } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { launch, uninstalled, type CatalogApp } from '../catalog'
-import { scoreApp } from '../fuzzy'
-import { openEditApp, regenerateApp } from '../generation'
+import { GOOD_MATCH, scoreApp } from '../fuzzy'
+import { openEditApp, regenerateApp, titleFor } from '../generation'
 import { AppTile } from '../icons'
 import { pushLayer } from '../layers'
 import { ContextMenu, type MenuNode } from '../menu/MenuList'
 import { useShell } from '../store'
 import type { AppManifest } from '../types'
 
-type Entry = { kind: 'app'; app: AppManifest } | { kind: 'catalog'; entry: CatalogApp }
+type Entry =
+  | { kind: 'app'; app: AppManifest }
+  | { kind: 'catalog'; entry: CatalogApp }
+  | { kind: 'typed'; id: string; name: string; prompt: string }
 
 function entryId(item: Entry): string {
-  return item.kind === 'app' ? item.app.id : item.entry.id
+  if (item.kind === 'app') return item.app.id
+  return item.kind === 'catalog' ? item.entry.id : item.id
 }
 
 function entryName(item: Entry): string {
-  return item.kind === 'app' ? item.app.name : item.entry.name
+  if (item.kind === 'app') return item.app.name
+  return item.kind === 'catalog' ? item.entry.name : item.name
 }
 
 export function openDrawer(): void {
@@ -41,11 +46,14 @@ export function Drawer() {
   const shown = useMemo(() => {
     const q = query.trim()
     const all: Entry[] = [...apps.map((app) => ({ kind: 'app' as const, app })), ...uninstalled(apps).map((entry) => ({ kind: 'catalog' as const, entry }))]
-    return all
-      .map((item) => ({ item, score: item.kind === 'app' ? scoreApp(q, item.app.name, item.app.description) : scoreApp(q, item.entry.name) }))
-      .filter((ranked) => ranked.score > 0)
+    const ranked = all
+      .map((item) => ({ item, score: item.kind === 'app' ? scoreApp(q, item.app.name, item.app.description) : scoreApp(q, entryName(item)) }))
+      .filter((hit) => hit.score > 0)
       .sort((a, b) => (q ? b.score - a.score : entryName(a.item).localeCompare(entryName(b.item))))
-      .map((ranked) => ranked.item)
+    // A name nothing answers to is just another app on the shelf.
+    if (!q || ranked.some((hit) => hit.score >= GOOD_MATCH)) return ranked.map((hit) => hit.item)
+    const name = titleFor(q)
+    return [{ kind: 'typed' as const, id: `typed:${name.toLowerCase()}`, name, prompt: q }, ...ranked.map((hit) => hit.item)]
   }, [apps, query])
 
   const count = Math.max(1, shown.length)
@@ -96,7 +104,8 @@ export function Drawer() {
     const item = shown[index]
     if (!item) return
     if (item.kind === 'app') openApp(item.app.id)
-    else launch(item.entry.prompt, item.entry.name)
+    else if (item.kind === 'catalog') launch(item.entry.prompt, item.entry.name)
+    else launch(item.prompt, item.name)
   }
 
   function onKeyDown(event: ReactKeyboardEvent) {
@@ -165,7 +174,6 @@ export function Drawer() {
           if (event.target === event.currentTarget) close(false)
         }}
       >
-        <h2 className="shell-drawer-title">Apps</h2>
         <label className="shell-drawer-search">
           <Icon name="Search" size={15} />
           <input ref={searchRef} value={query} placeholder="Search" aria-label="Search apps" spellCheck={false} onChange={(event) => setQuery(event.target.value)} />
@@ -187,8 +195,10 @@ export function Drawer() {
                 <button type="button" className="shell-drawer-hit" onClick={() => activate(index)}>
                   {item.kind === 'app' ? (
                     <AppTile id={item.app.id} icon={item.app.icon} tint={item.app.tint} size={60} />
-                  ) : (
+                  ) : item.kind === 'catalog' ? (
                     <AppTile id={item.entry.id} icon={item.entry.icon} tint={item.entry.tint} size={60} />
+                  ) : (
+                    <AppTile id={item.id} icon="AppWindow" tint="#7a756f" size={60} />
                   )}
                   <span>{entryName(item)}</span>
                 </button>
@@ -204,7 +214,6 @@ export function Drawer() {
             )
           })}
         </div>
-        {query.trim() && shown.length === 0 ? <p className="shell-drawer-empty">No Results</p> : null}
       </div>
       {menu && menuItems.length ? <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} /> : null}
     </div>
