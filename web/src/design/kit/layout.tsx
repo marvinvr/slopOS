@@ -10,34 +10,37 @@ type FlexProps = Box & {
   justify?: CSSProperties['justifyContent']
   /** `true` means flex-grow 1. A number is the grow factor. */
   grow?: boolean | number
+  /** Stretch to the window. The app root wants this. */
+  fill?: boolean
   padding?: number | string
 }
 
-function flexStyle({ gap, align, justify, grow, padding, style }: FlexProps): CSSProperties {
+function flexStyle({ gap, align, justify, grow, fill, padding, style }: FlexProps): CSSProperties {
   return {
     gap,
     alignItems: align,
     justifyContent: justify,
     flexGrow: grow === true ? 1 : typeof grow === 'number' ? grow : undefined,
-    minHeight: grow ? 0 : undefined,
+    minHeight: grow || fill ? 0 : undefined,
+    height: fill ? '100%' : undefined,
     padding,
     ...style,
   }
 }
 
 export type StackProps = FlexProps
-export function Stack({ gap = 8, align, justify, grow, padding, className, style, children }: StackProps) {
+export function Stack({ gap = 8, align, justify, grow, fill, padding, className, style, children }: StackProps) {
   return (
-    <div className={cx('slop-stack', className)} style={flexStyle({ gap, align, justify, grow, padding, style })}>
+    <div className={cx('slop-stack', className)} style={flexStyle({ gap, align, justify, grow, fill, padding, style })}>
       {children}
     </div>
   )
 }
 
 export type RowProps = FlexProps & { wrap?: boolean }
-export function Row({ gap = 8, align = 'center', justify, grow, padding, wrap, className, style, children }: RowProps) {
+export function Row({ gap = 8, align = 'center', justify, grow, fill, padding, wrap, className, style, children }: RowProps) {
   return (
-    <div className={cx('slop-row', wrap && 'wrap', className)} style={flexStyle({ gap, align, justify, grow, padding, style })}>
+    <div className={cx('slop-row', wrap && 'wrap', className)} style={flexStyle({ gap, align, justify, grow, fill, padding, style })}>
       {children}
     </div>
   )
@@ -133,9 +136,12 @@ export function SplitView({
   )
 }
 
-export function ScrollArea({ className, style, children }: Box) {
+export function ScrollArea({ grow, className, style, children }: Box & { grow?: boolean }) {
   return (
-    <div className={cx('slop-scroll', className)} style={style}>
+    <div
+      className={cx('slop-scroll', className)}
+      style={{ flex: grow ? 1 : undefined, minHeight: grow ? 0 : undefined, ...style }}
+    >
       {children}
     </div>
   )

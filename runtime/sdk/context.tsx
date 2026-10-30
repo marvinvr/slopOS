@@ -2,12 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { applyTheme, type ThemeMode } from '../../web/src/design/theme'
 import { onHostMessage, send } from './host'
 
+export type TitleScope = 'app' | 'screen'
+
+export const TitleScopeContext = createContext<TitleScope>('app')
+
 export type SlopContextValue = {
   mode: ThemeMode
   accent: string
   focused: boolean
   title: string
-  setTitle: (title: string) => void
+  setTitle: (title: string, scope?: TitleScope) => void
+  releaseScreenTitle: () => void
 }
 
 export const SlopContext = createContext<SlopContextValue | null>(null)
@@ -18,6 +23,8 @@ export function SlopProvider({ children }: { children: ReactNode }) {
   const [focused, setFocused] = useState(false)
   const [title, setTitleState] = useState('')
   const titleRef = useRef('')
+  const appTitle = useRef('')
+  const screenTitle = useRef<string | null>(null)
 
   useEffect(() => {
     return onHostMessage((msg) => {
@@ -34,16 +41,30 @@ export function SlopProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const setTitle = useCallback((next: string) => {
-    if (titleRef.current === next) return
-    titleRef.current = next
-    setTitleState(next)
-    send('setTitle', { title: next })
+  const publish = useCallback((shown: string) => {
+    if (titleRef.current === shown) return
+    titleRef.current = shown
+    // Apps call this during render. Defer so the provider does not update mid-render.
+    queueMicrotask(() => {
+      setTitleState(shown)
+      send('setTitle', { title: shown })
+    })
   }, [])
 
+  const setTitle = useCallback((next: string, scope: TitleScope = 'app') => {
+    if (scope === 'screen') screenTitle.current = next
+    else appTitle.current = next
+    publish(screenTitle.current ?? appTitle.current)
+  }, [publish])
+
+  const releaseScreenTitle = useCallback(() => {
+    screenTitle.current = null
+    publish(appTitle.current)
+  }, [publish])
+
   const value = useMemo(
-    () => ({ mode, accent, focused, title, setTitle }),
-    [mode, accent, focused, title, setTitle],
+    () => ({ mode, accent, focused, title, setTitle, releaseScreenTitle }),
+    [mode, accent, focused, title, setTitle, releaseScreenTitle],
   )
 
   return <SlopContext.Provider value={value}>{children}</SlopContext.Provider>
@@ -53,4 +74,11 @@ export function useSlopContext(): SlopContextValue {
   const ctx = useContext(SlopContext)
   if (!ctx) throw new Error('slopOS context is missing')
   return ctx
+}
+
+/** A pushed screen owns the window title until it unmounts. */
+export function ScreenTitle({ children }: { children: ReactNode }) {
+  const { releaseScreenTitle } = useSlopContext()
+  useEffect(() => () => releaseScreenTitle(), [releaseScreenTitle])
+  return <TitleScopeContext.Provider value="screen">{children}</TitleScopeContext.Provider>
 }

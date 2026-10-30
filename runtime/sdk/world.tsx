@@ -1,6 +1,7 @@
 import { Component, createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { Button, GenerativeProvider, Heading, IconButton, Menu, Text } from '../../web/src/design/kit'
 import type { PersistedScreen } from '../protocol'
+import { ScreenTitle } from './context'
 import { frameAppId, onHostMessage, send } from './host'
 import { bindGenContext, friendlyProgress, requestGeneration, setGenAppLabel, setGenScreenLabel, type GenRequest, type GenResult } from './gen-client'
 import { ConfirmHost } from './confirm'
@@ -355,12 +356,14 @@ export function WorldProvider({ children }: { children: ReactNode }) {
             {children}
           </div>
           {top ? (
-            <ScreenStage
-              screen={top}
-              onPop={() => setScreens((stack) => stack.slice(0, -1))}
-              onRetry={() => retry(top)}
-              onRegenerate={() => regenerate(top)}
-            />
+            <ScreenTitle key={top.id}>
+              <ScreenStage
+                screen={top}
+                onPop={() => setScreens((stack) => stack.slice(0, -1))}
+                onRetry={() => retry(top)}
+                onRegenerate={() => regenerate(top)}
+              />
+            </ScreenTitle>
           ) : null}
           <ConfirmHost />
         </div>

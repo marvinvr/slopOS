@@ -1,14 +1,15 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { MenuSpec, WireMenu } from '../protocol'
 import { onHostMessage, rpc, send } from './host'
-import { SlopContext } from './context'
+import { SlopContext, TitleScopeContext } from './context'
 
 export function useWindow() {
   const ctx = useContext(SlopContext)
+  const scope = useContext(TitleScopeContext)
   if (!ctx) throw new Error('useWindow must be used inside an app')
   return {
     title: ctx.title,
-    setTitle: ctx.setTitle,
+    setTitle: (next: string) => ctx.setTitle(next, scope),
     setSize: (width: number, height: number) => send('setSize', { width, height }),
     close: () => send('close'),
     focused: ctx.focused,

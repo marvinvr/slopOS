@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type FormEvent } from 'react'
 import { cx } from './cx'
 import { useGenerativeApi } from './generative'
 import { Icon } from './Icon'
+import { Stack } from './layout'
 
 type Box = { className?: string; style?: CSSProperties; disabled?: boolean; size?: 'sm' | 'md' }
 
@@ -205,6 +206,17 @@ export type ProgressBarProps = {
   label?: string
   className?: string
   style?: CSSProperties
+}
+
+/** Centered indeterminate bar for the moment before `useStorage` has loaded. */
+export function Loading({ label = 'Opening' }: { label?: string }) {
+  return (
+    <Stack align="center" justify="center" fill>
+      <div style={{ width: 160 }}>
+        <ProgressBar label={label} />
+      </div>
+    </Stack>
+  )
 }
 
 export function ProgressBar({ value, max = 1, label, className, style }: ProgressBarProps) {
