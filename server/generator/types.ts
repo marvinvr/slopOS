@@ -2,7 +2,7 @@
 
 export type ProviderId = 'grok' | 'codex' | 'claude' | 'mock'
 
-export type GenKind = 'app' | 'view' | 'content' | 'route'
+export type GenKind = 'app' | 'view' | 'content'
 
 export type GenEvent =
   | { type: 'status' | 'thinking' | 'text' | 'tool' | 'log'; text: string }
@@ -42,7 +42,7 @@ export interface GeneratorProvider {
 
 export type GenResult =
   | { kind: 'content'; data: unknown }
-  | { kind: 'view'; viewId: string; appId: string }
+  | { kind: 'view'; viewId: string; appId: string; title?: string }
   | { kind: 'app'; appId: string; name?: string; version?: number }
 
 export type SseEvent =

@@ -13,7 +13,7 @@ export type GenRequest = {
 
 export type GenResult<T = unknown> =
   | { kind: 'content'; data: T }
-  | { kind: 'view'; viewId: string }
+  | { kind: 'view'; viewId: string; title?: string }
   | { kind: 'app'; appId: string }
 
 type Waiter = {

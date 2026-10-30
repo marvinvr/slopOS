@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
 import { mockMs } from '../config'
 import type { Availability, GenEvent, GeneratorProvider, RunOptions } from '../types'
 import { sleep } from './util'
@@ -125,22 +123,21 @@ export default function View({ params, context }: { params?: Record<string, unkn
 }
 `
 
+const REPAIR = /did not compile/i
+const FIX = /threw at runtime/i
+
 function wantsBroken(prompt: string): boolean {
-  if (/compile attempt|failed to compile|previous file failed/i.test(prompt)) return false
+  if (REPAIR.test(prompt)) return false
   return /\bbroken\b/i.test(prompt)
 }
 
 function wantsCrashy(prompt: string): boolean {
-  if (/Kind:\s*fix\b/i.test(prompt)) return false
-  if (/compile attempt|failed to compile|previous file failed/i.test(prompt)) return false
+  if (FIX.test(prompt) || REPAIR.test(prompt)) return false
   return /\bcrashy\b/i.test(prompt)
 }
 
-async function repairingCrash(cwd: string, prompt: string): Promise<boolean> {
-  if (!/Kind:\s*fix\b/i.test(prompt)) return false
-  if (/\bcrashy\b|counter slipped|slop-crashy/i.test(prompt)) return true
-  const existing = await fs.readFile(path.join(cwd, 'App.tsx'), 'utf8').catch(() => '')
-  return /slop-crashy|The counter slipped/.test(existing)
+function repairingCrash(prompt: string): boolean {
+  return FIX.test(prompt) && /\bcrashy\b|counter slipped|slop-crashy/i.test(prompt)
 }
 
 function fillSchema(schema: Record<string, unknown> | undefined): unknown {
@@ -161,20 +158,17 @@ function fillSchema(schema: Record<string, unknown> | undefined): unknown {
   return out
 }
 
-function routeJson(prompt: string): unknown {
-  const calling = prompt.match(/Calling app:\s*(\S+)/)?.[1]
-  if (calling && calling !== 'none' && /\b(screen|settings|view)\b/i.test(prompt)) {
-    return { route: 'view', appId: calling }
-  }
-  return { route: 'app' }
+/** The single-shot answer: meta json, then the source. */
+function answer(meta: Record<string, unknown>, source: string): string {
+  return `\`\`\`json\n${JSON.stringify(meta)}\n\`\`\`\n\`\`\`tsx\n${source}\n\`\`\``
 }
 
-async function writeApp(cwd: string, prompt: string): Promise<void> {
-  const edited = /Kind:\s*edit/i.test(prompt)
+function appAnswer(prompt: string): string {
+  const edited = /follow this instruction/i.test(prompt)
   const mark = edited ? 'v2' : 'v1'
   const timer = /pomodoro|\btimer\b/i.test(prompt)
   const crashy = wantsCrashy(prompt)
-  const repair = await repairingCrash(cwd, prompt)
+  const repair = repairingCrash(prompt)
   const source = wantsBroken(prompt) ? BROKEN : crashy ? crashyApp() : repair ? steadyApp() : timer ? pomodoro(mark) : todo(mark)
   const meta =
     crashy || repair
@@ -182,24 +176,7 @@ async function writeApp(cwd: string, prompt: string): Promise<void> {
       : timer
         ? manifest('Pomodoro', 'Timer', 'A calm timer for one focused stretch.')
         : manifest('To-dos', 'ListTodo', 'A short list of what is left to do.')
-  const shapes = crashy || repair ? [] : timer ? ['left', 'running'] : ['items']
-  const world = {
-    summary: { purpose: meta.description, dataShapes: shapes },
-    entities: [],
-  }
-  await fs.mkdir(cwd, { recursive: true })
-  await fs.writeFile(path.join(cwd, 'App.tsx'), source)
-  await fs.writeFile(path.join(cwd, 'manifest.json'), JSON.stringify(meta, null, 2))
-  await fs.writeFile(path.join(cwd, 'world.json'), JSON.stringify(world, null, 2))
-}
-
-async function writeView(cwd: string): Promise<void> {
-  await fs.mkdir(cwd, { recursive: true })
-  await fs.writeFile(path.join(cwd, 'View.tsx'), VIEW)
-  await fs.writeFile(
-    path.join(cwd, 'world.json'),
-    JSON.stringify({ summary: { purpose: 'A generated screen.', dataShapes: [] }, entities: [] }, null, 2),
-  )
+  return answer({ ...meta, title: meta.name, entities: [] }, source)
 }
 
 export const mockProvider: GeneratorProvider = {
@@ -223,26 +200,10 @@ export const mockProvider: GeneratorProvider = {
       yield { type: 'end', sessionId, output }
       return
     }
-    if (opts.kind === 'route') {
-      const output = JSON.stringify(routeJson(opts.prompt))
-      yield { type: 'text', text: output }
-      yield { type: 'end', sessionId, output }
-      return
-    }
-    if (opts.kind === 'view') {
-      await writeView(opts.cwd)
-      yield { type: 'tool', text: 'write View.tsx' }
-      await sleep(step, opts.signal)
-      if (opts.signal.aborted) return
-      yield { type: 'text', text: 'Wrote View.tsx.' }
-      yield { type: 'end', sessionId, output: 'Wrote View.tsx.' }
-      return
-    }
-    await writeApp(opts.cwd, opts.prompt)
-    yield { type: 'tool', text: 'write App.tsx' }
+    const output = opts.kind === 'view' ? answer({ title: 'Screen', entities: [] }, VIEW) : appAnswer(opts.prompt)
     await sleep(step, opts.signal)
     if (opts.signal.aborted) return
-    yield { type: 'text', text: 'Wrote App.tsx and manifest.json.' }
-    yield { type: 'end', sessionId, output: 'Wrote App.tsx and manifest.json.' }
+    yield { type: 'text', text: output }
+    yield { type: 'end', sessionId, output }
   },
 }

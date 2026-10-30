@@ -114,10 +114,12 @@ function normalizeScreens(raw: unknown): PersistedScreen[] {
       intent: typeof item.intent === 'string' ? item.intent : undefined,
       params: item.params,
       context: item.context,
+      key: typeof item.key === 'string' ? item.key : undefined,
+      ahead: item.ahead === true ? true : undefined,
     })
-    if (screens.length >= 24) break
   }
-  return screens
+  // Keep the newest history: the end of the back stack and everything ahead.
+  return screens.slice(-24)
 }
 
 function normalizeRect(raw: unknown): SavedRect | null {

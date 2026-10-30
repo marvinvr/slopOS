@@ -1,6 +1,5 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
 import { cx } from './cx'
-import { useGenerativeApi } from './generative'
 import { Icon } from './Icon'
 import { Stack } from './layout'
 
@@ -30,11 +29,9 @@ export function SearchField({
   style,
   ...rest
 }: SearchFieldProps) {
-  const api = useGenerativeApi()
+  void intent
   const [local, setLocal] = useState(defaultValue ?? '')
   const text = value !== undefined ? value : local
-  const generative = !onSearch && !disabled && Boolean(api)
-  const busy = generative && api?.busy === (intent?.trim() || text.trim())
 
   function set(next: string) {
     if (value === undefined) setLocal(next)
@@ -45,17 +42,13 @@ export function SearchField({
     event.preventDefault()
     const query = text.trim()
     if (!query || disabled) return
-    if (onSearch) {
-      onSearch(query)
-      return
-    }
-    api?.open(intent?.trim() || query)
+    onSearch?.(query)
   }
 
   return (
     <form
       role="search"
-      className={cx('slop-search', size === 'sm' && 'sm', generative && 'slop-generative', busy && 'is-busy', className)}
+      className={cx('slop-search', size === 'sm' && 'sm', className)}
       style={style}
       onSubmit={submit}
     >

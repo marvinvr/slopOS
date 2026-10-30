@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { openPlace } from '../spotlight/world'
-import { isPending, useShell } from '../store'
+import { useShell } from '../store'
 import { fetchJobs, postAuto, postCancel, postEdit, postFix, postRegenerate, postRevert, type GenResult, type JobInfo } from './api'
 
 export type GrokStatus = {
@@ -18,7 +17,6 @@ export type Build = {
   kind: 'create' | 'edit' | 'regenerate' | 'fix'
   jobId?: string
   appId?: string
-  prompt?: string
   failed?: boolean
   retry: () => void
 }
@@ -157,15 +155,6 @@ function runBuild(build: Build, start: () => Promise<{ jobId?: string; cached?: 
 export async function finishBuild(windowId: string, result: GenResult | undefined): Promise<void> {
   const build = buildFor(windowId)
   if (!build) return
-  // The request named a screen in an app that already exists: open it there instead.
-  if (result?.kind === 'view' && build.kind === 'create') {
-    const win = useShell.getState().windows.find((item) => item.id === windowId)
-    dropBuild(windowId)
-    if (win && isPending(win.appId)) useShell.getState().closeWindow(windowId)
-    await useShell.getState().refreshApps()
-    openPlace(result.appId, { appId: result.appId, viewId: result.viewId, intent: build.prompt || win?.title || '', title: win?.title })
-    return
-  }
   if (!result || result.kind !== 'app') {
     failBuild(windowId)
     return
@@ -179,7 +168,7 @@ export function startGeneration(prompt: string, title?: string): void {
   const text = prompt.trim()
   if (!text) return
   const windowId = useShell.getState().openPending(title?.trim() || titleFor(text))
-  const retry = () => runBuild({ windowId, kind: 'create', prompt: text, retry }, () => postAuto(text))
+  const retry = () => runBuild({ windowId, kind: 'create', retry }, () => postAuto(text))
   retry()
 }
 

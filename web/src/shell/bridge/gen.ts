@@ -143,10 +143,12 @@ export function normalizeScreens(raw: unknown): PersistedScreen[] {
       intent: typeof screen.intent === 'string' ? screen.intent : undefined,
       params: screen.params,
       context: screen.context,
+      key: typeof screen.key === 'string' ? screen.key : undefined,
+      ahead: screen.ahead === true ? true : undefined,
     })
-    if (screens.length >= 24) break
   }
-  return screens
+  // Keep the newest history: the end of the back stack and everything ahead.
+  return screens.slice(-24)
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

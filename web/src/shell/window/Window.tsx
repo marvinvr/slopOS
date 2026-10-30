@@ -36,7 +36,7 @@ export function Window({ win }: { win: Win }) {
   const building = pending ? !build?.failed : Boolean(build && !build.failed)
   const failed = build?.failed ? build : undefined
   useWindowBridge(win, iframeRef)
-  const src = `/runtime/frame.html?app=${encodeURIComponent(win.appId)}&v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}`
+  const src = `/runtime/frame.html?app=${encodeURIComponent(win.appId)}&v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}${app?.fixture ? '&capture=0' : ''}`
   const [bootSrc, setBootSrc] = useState(src)
   const [boot, setBoot] = useState<'in' | 'out' | 'off'>('in')
   // Once a window has shown the placeholder, it stays up until the app paints, so the swap is one fade.

@@ -11,7 +11,6 @@ const DEFAULT_TIMEOUT = {
   app: 10 * 60 * 1000,
   view: 5 * 60 * 1000,
   content: 90 * 1000,
-  route: 60 * 1000,
 } as const
 
 type TimeoutBucket = keyof typeof DEFAULT_TIMEOUT
@@ -19,7 +18,6 @@ type TimeoutBucket = keyof typeof DEFAULT_TIMEOUT
 function timeoutBucket(kind: string): TimeoutBucket {
   if (kind === 'view') return 'view'
   if (kind === 'content') return 'content'
-  if (kind === 'route') return 'route'
   return 'app'
 }
 
@@ -35,7 +33,7 @@ export function timeoutFor(kind: string): number {
 
 export function concurrency(): number {
   const n = Number(process.env.SLOPOS_CONCURRENCY)
-  if (!Number.isFinite(n) || n < 1) return 2
+  if (!Number.isFinite(n) || n < 1) return 4
   return Math.min(8, Math.floor(n))
 }
 
@@ -55,7 +53,7 @@ export function binFor(id: ProviderId): string {
 /**
  * Model and effort for a kind.
  * `SLOPOS_<P>_MODEL_<KIND>` / `_EFFORT_<KIND>` win.
- * Grok content and route keep their faster built-in default unless that kind override is set.
+ * Grok content keeps its faster built-in default unless that kind override is set.
  * App and view use `SLOPOS_<P>_MODEL` / `_EFFORT`, then the built-in default.
  */
 export function settingsFor(id: ProviderId, kind: GenKind): { model: string; effort: string } {
@@ -66,7 +64,7 @@ export function settingsFor(id: ProviderId, kind: GenKind): { model: string; eff
   const specificEffort = process.env[`${prefix}_EFFORT_${kindToken}`]?.trim()
   const genericModel = process.env[`${prefix}_MODEL`]?.trim()
   const genericEffort = process.env[`${prefix}_EFFORT`]?.trim()
-  const fast = kind === 'content' || kind === 'route'
+  const fast = kind === 'content'
   if (id === 'grok') {
     return {
       model: specificModel || (fast ? 'grok-4.7-build-fast' : genericModel || 'grok-4.7'),

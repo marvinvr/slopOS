@@ -1,8 +1,8 @@
-import { Component, createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import { Button, GenerativeProvider, Heading, IconButton, Menu } from '../../web/src/design/kit'
+import { Component, useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { Button, Heading, IconButton } from '../../web/src/design/kit'
 import type { PersistedScreen } from '../protocol'
 import { ScreenTitle } from './context'
-import { frameAppId, onHostMessage, send } from './host'
+import { frameAppId, frameCapture, onHostMessage, send } from './host'
 import { bindGenContext, requestGeneration, setGenAppLabel, setGenScreenLabel, type GenRequest, type GenResult } from './gen-client'
 import { ConfirmHost } from './confirm'
 
@@ -10,42 +10,20 @@ export type { GenRequest, GenResult }
 
 type Phase = 'loading' | 'ready' | 'error'
 
+/** A screen after the first one. The first screen is the app bundle itself. */
 type Screen = {
   id: string
   title: string
   intent?: string
   context?: unknown
-  params?: unknown
+  key?: string
   viewId?: string
   phase: Phase
-  progress?: string
-  error?: string
   rev: number
 }
 
-type PublicScreen = { id: string; title: string; viewId?: string; intent?: string }
-
-type ScreenApi = {
-  push: (target: string | { intent: string; context?: unknown; title?: string }) => void
-  pop: () => void
-  stack: PublicScreen[]
-  open: (intent: string, context?: unknown) => void
-  busy: string | null
-}
-
-const ScreenContext = createContext<ScreenApi | null>(null)
-
-let opener: (intent: string, context?: unknown) => void = () => {}
-
-export function openGenerative(req: { intent: string; context?: unknown }): void {
-  opener(req.intent, req.context)
-}
-
-export function useScreens(): { push: ScreenApi['push']; pop: () => void; stack: PublicScreen[] } {
-  const api = useContext(ScreenContext)
-  if (!api) throw new Error('useScreens must be used inside an app')
-  return { push: api.push, pop: api.pop, stack: api.stack }
-}
+/** What the person just did, read off the DOM. */
+type Interaction = { action: 'click' | 'enter' | 'change' | 'submit'; label: string; value?: string }
 
 export function useGenContext(ctx: object): void {
   const json = JSON.stringify(ctx)
@@ -63,7 +41,6 @@ type Generated<T> = {
   status: 'idle' | 'loading' | 'ready' | 'error'
   data?: T
   error?: string
-  progress?: string
   regenerate: () => void
 }
 
@@ -78,14 +55,8 @@ export function useGenerated<T = unknown>(req: GenRequest | null): Generated<T> 
       return
     }
     let cancel = false
-    setState((prev) => ({ status: 'loading', data: prev.data, progress: undefined, error: undefined }))
-    requestGeneration<T>(
-      'gen.request',
-      { ...req, kind: req.kind ?? 'content', fresh: fresh > 0 ? true : req.fresh },
-      (text) => {
-        if (!cancel) setState((prev) => ({ ...prev, progress: text }))
-      },
-    )
+    setState((prev) => ({ status: 'loading', data: prev.data, error: undefined }))
+    requestGeneration<T>('gen.request', { ...req, kind: req.kind ?? 'content', fresh: fresh > 0 ? true : req.fresh })
       .then((result) => {
         if (cancel) return
         if (result.kind !== 'content') {
@@ -109,315 +80,326 @@ export function useGenerated<T = unknown>(req: GenRequest | null): Generated<T> 
   return { ...state, regenerate: () => setFresh((n) => n + 1) }
 }
 
-export function GenerativeView({ intent, context, fallback }: { intent: string; context?: unknown; fallback?: ReactNode }) {
-  const [nonce, setNonce] = useState(0)
-  const [phase, setPhase] = useState<Phase>('loading')
-  const [viewId, setViewId] = useState<string | null>(null)
-  const [progress, setProgress] = useState<string | undefined>()
-  const [error, setError] = useState<string | undefined>()
-  const ctxKey = stable(context)
-
-  useEffect(() => {
-    let cancel = false
-    setPhase('loading')
-    setProgress(undefined)
-    setError(undefined)
-    requestGeneration('gen.request', { intent, kind: 'view', context, fresh: nonce > 0 || undefined }, (text) => {
-      if (!cancel) setProgress(text)
-    })
-      .then((result) => {
-        if (cancel) return
-        if (result.kind !== 'view') throw new Error('Expected a view')
-        setViewId(result.viewId)
-        setPhase('ready')
-      })
-      .catch((err: unknown) => {
-        if (cancel) return
-        setPhase('error')
-        setError(err instanceof Error ? err.message : 'Couldn’t load')
-      })
-    return () => {
-      cancel = true
-    }
-  }, [intent, ctxKey, nonce, context])
-
-  if (phase === 'error') return <GenError message={error} onRetry={() => setNonce((n) => n + 1)} />
-  if (phase !== 'ready' || !viewId) return fallback ?? <Materializing title={intent} status={progress} />
-  return <ViewFrame viewId={viewId} rev={nonce} params={{ title: intent, intent }} context={context} />
-}
-
+/**
+ * Owns the window's screens. Every interaction on the visible screen is caught here,
+ * sent with the screen's context, and answered with the next screen.
+ */
 export function WorldProvider({ children }: { children: ReactNode }) {
-  const [screens, setScreens] = useState<Screen[]>([])
-  const [busy, setBusy] = useState<string | null>(null)
+  const [stack, setStack] = useState<Screen[]>([])
+  const [ahead, setAhead] = useState<Screen[]>([])
   const [publish, setPublish] = useState(false)
-  const screensRef = useRef(screens)
-  screensRef.current = screens
-  const busyRef = useRef<string | null>(null)
-  const restoreRef = useRef(true)
+  const [appName, setAppName] = useState('')
+  const stageRef = useRef<HTMLDivElement>(null)
+  const stackRef = useRef(stack)
+  stackRef.current = stack
+  const aheadRef = useRef(ahead)
+  aheadRef.current = ahead
+  const restored = useRef(false)
+
+  const top = stack[stack.length - 1]
+  useEffect(() => {
+    setGenScreenLabel(top?.title ?? '')
+  }, [top?.title])
 
   useEffect(() => {
     return onHostMessage((msg) => {
       if (msg.type !== 'screens.restore') return
       const payload = (msg.payload ?? {}) as { screens?: PersistedScreen[]; appName?: string }
-      if (payload.appName) setGenAppLabel(payload.appName)
-      if (!restoreRef.current) return
-      restoreRef.current = false
-      setScreens((payload.screens ?? []).filter((screen) => screen && typeof screen.viewId === 'string').map(fromPersisted))
+      if (payload.appName) {
+        setGenAppLabel(payload.appName)
+        setAppName(payload.appName)
+      }
+      if (restored.current) return
+      restored.current = true
+      const saved = (payload.screens ?? []).filter((screen) => screen && typeof screen.viewId === 'string')
+      setStack(saved.filter((screen) => !screen.ahead).map(fromPersisted))
+      setAhead(saved.filter((screen) => screen.ahead).map(fromPersisted))
       setPublish(true)
     })
   }, [])
 
-  const top = screens[screens.length - 1]
+  const persistedKey = stable([
+    ...stack.filter((screen) => screen.viewId && screen.phase === 'ready').map((screen) => toPersisted(screen, false)),
+    ...ahead.filter((screen) => screen.viewId).map((screen) => toPersisted(screen, true)),
+  ])
   useEffect(() => {
-    setGenScreenLabel(top?.title ?? '')
-  }, [top?.title])
-
-  const persisted = screens.filter((screen) => screen.viewId && screen.phase !== 'error').map(toPersisted)
-  const persistedKey = stable(persisted)
-  useEffect(() => {
-    if (!publish || !persistedKey) return
+    if (!publish) return
     send('screens.state', { stack: JSON.parse(persistedKey) as PersistedScreen[] })
   }, [publish, persistedKey])
 
+  const patch = useCallback((id: string, partial: Partial<Screen>) => {
+    setStack((items) => items.map((screen) => (screen.id === id ? { ...screen, ...partial } : screen)))
+  }, [])
+
+  const load = useCallback(
+    (screen: Screen, fresh: boolean) => {
+      if (!screen.intent) return
+      requestGeneration('gen.request', { intent: screen.intent, kind: 'view', context: screen.context, key: screen.key, fresh: fresh || undefined })
+        .then((result) => {
+          if (result.kind !== 'view') throw new Error('Couldn’t load')
+          patch(screen.id, { phase: 'ready', viewId: result.viewId, title: result.title || screen.title, rev: Date.now() })
+        })
+        .catch(() => patch(screen.id, { phase: 'error' }))
+    },
+    [patch],
+  )
+
+  const advance = useCallback(
+    (interaction: Interaction) => {
+      const current = stackRef.current[stackRef.current.length - 1]
+      if (current && current.phase === 'loading') return
+      const from = current?.viewId || 'root'
+      const intent = describe(interaction)
+      const stage = stageRef.current
+      const context = {
+        from,
+        title: current?.title || appName,
+        interaction,
+        values: stage ? fieldValues(stage) : [],
+        shown: stage ? visibleText(stage) : '',
+      }
+      const screen: Screen = {
+        id: uid(),
+        title: interaction.label || 'Page',
+        intent,
+        context,
+        key: `${frameAppId}:${from}:${hash(stable([interaction, context.values]))}`,
+        phase: 'loading',
+        rev: 0,
+      }
+      restored.current = true
+      setPublish(true)
+      setAhead([])
+      setStack((items) => [...items, screen])
+      load(screen, false)
+    },
+    [appName, load],
+  )
+
+  const back = useCallback(() => {
+    const items = stackRef.current
+    const last = items[items.length - 1]
+    if (!last) return
+    setStack(items.slice(0, -1))
+    if (last.phase === 'ready') setAhead((rest) => [last, ...rest])
+  }, [])
+
+  const forward = useCallback(() => {
+    const [next, ...rest] = aheadRef.current
+    if (!next) return
+    setAhead(rest)
+    setStack((items) => [...items, next])
+  }, [])
+
+  useEffect(() => {
+    if (!frameCapture) return
+    return captureInteractions(advance)
+  }, [advance])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (screensRef.current.length === 0) return
-      const altBack = event.altKey && !event.metaKey && !event.ctrlKey && event.key === 'ArrowLeft'
-      const modBack = (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && (event.key === '[' || event.code === 'BracketLeft')
-      if (!altBack && !modBack) return
+      const mod = (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey
+      const isBack = (event.altKey && event.key === 'ArrowLeft') || (mod && (event.key === '[' || event.code === 'BracketLeft'))
+      const isForward = (event.altKey && event.key === 'ArrowRight') || (mod && (event.key === ']' || event.code === 'BracketRight'))
+      if (!isBack && !isForward) return
       event.preventDefault()
       event.stopPropagation()
-      setScreens((stack) => stack.slice(0, -1))
+      if (isBack) back()
+      else forward()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [])
-
-  const api = useMemo<ScreenApi>(() => {
-    function patch(id: string, partial: Partial<Screen>) {
-      setScreens((stack) => stack.map((screen) => (screen.id === id ? { ...screen, ...partial } : screen)))
-    }
-
-    function runView(id: string, intent: string, context: unknown, fresh: boolean) {
-      requestGeneration(
-        'gen.request',
-        { intent, kind: 'view', context, fresh },
-        (text) => patch(id, { progress: text }),
-      )
-        .then((result) => {
-          if (result.kind !== 'view') {
-            patch(id, { phase: 'error', error: 'Expected a view', progress: undefined })
-            return
-          }
-          patch(id, { phase: 'ready', viewId: result.viewId, error: undefined, progress: undefined, rev: Date.now() })
-        })
-        .catch((err: unknown) => {
-          patch(id, { phase: 'error', error: err instanceof Error ? err.message : 'Couldn’t load', progress: undefined })
-        })
-    }
-
-    function open(intent: string, context?: unknown) {
-      const label = intent.trim()
-      if (!label || busyRef.current) return
-      busyRef.current = label
-      setBusy(label)
-      restoreRef.current = false
-      const id = uid()
-      setScreens((stack) => [...stack, pending(id, label, context)])
-      setPublish(true)
-      requestGeneration('gen.open', { intent: label, kind: 'auto', context }, (text) => patch(id, { progress: text }))
-        .then((result) => {
-          if (result.kind === 'view') {
-            patch(id, { phase: 'ready', viewId: result.viewId, progress: undefined, rev: Date.now() })
-            return
-          }
-          setScreens((stack) => stack.filter((screen) => screen.id !== id))
-        })
-        .catch((err: unknown) => {
-          patch(id, { phase: 'error', error: err instanceof Error ? err.message : 'Couldn’t load', progress: undefined })
-        })
-        .finally(() => {
-          if (busyRef.current === label) {
-            busyRef.current = null
-            setBusy(null)
-          }
-        })
-    }
-
-    return {
-      busy,
-      open,
-      pop: () => setScreens((stack) => stack.slice(0, -1)),
-      push: (target) => {
-        restoreRef.current = false
-        setPublish(true)
-        if (typeof target === 'string') {
-          setScreens((stack) => [
-            ...stack,
-            { id: uid(), title: 'Page', viewId: target, phase: 'ready', rev: 0 },
-          ])
-          return
-        }
-        const id = uid()
-        const title = target.title?.trim() || target.intent
-        setScreens((stack) => [...stack, { ...pending(id, title, target.context), intent: target.intent }])
-        runView(id, target.intent, target.context, false)
-      },
-      stack: screens.map((screen) => ({ id: screen.id, title: screen.title, viewId: screen.viewId, intent: screen.intent })),
-    }
-  }, [busy, screens])
-
-  const apiRef = useRef(api)
-  apiRef.current = api
-  useEffect(() => {
-    opener = (intent, context) => apiRef.current.open(intent, context)
-    return () => {
-      opener = () => {}
-    }
-  }, [])
+  }, [back, forward])
 
   useEffect(() => {
     return onHostMessage((msg) => {
       if (msg.type === 'screens.push') {
         const payload = (msg.payload ?? {}) as { viewId?: string; title?: string; intent?: string }
         if (!payload.viewId) return
-        restoreRef.current = false
+        restored.current = true
         setPublish(true)
-        setScreens((stack) => {
-          const top = stack[stack.length - 1]
-          if (top?.viewId === payload.viewId && top.phase === 'ready') return stack
-          return [
-            ...stack,
-            {
-              id: uid(),
-              title: payload.title || payload.intent || 'Page',
-              intent: payload.intent,
-              viewId: payload.viewId,
-              phase: 'ready',
-              rev: 0,
-              params: { title: payload.title || payload.intent, intent: payload.intent },
-            },
-          ]
+        setAhead([])
+        setStack((items) => {
+          const last = items[items.length - 1]
+          if (last?.viewId === payload.viewId) return items
+          return [...items, { id: uid(), title: payload.title || payload.intent || 'Page', intent: payload.intent, viewId: payload.viewId, phase: 'ready', rev: 0 }]
         })
         return
       }
       if (msg.type === 'generative.open') {
-        const payload = (msg.payload ?? {}) as { intent?: string; context?: unknown }
-        const intent = payload.intent?.trim()
-        if (!intent) return
-        apiRef.current.open(intent, payload.context)
+        const payload = (msg.payload ?? {}) as { intent?: string }
+        const label = payload.intent?.trim()
+        if (label) advance({ action: 'click', label })
       }
     })
-  }, [])
+  }, [advance])
 
-  function retry(screen: Screen) {
-    if (!screen.intent) return
-    setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'loading', error: undefined, progress: undefined, viewId: undefined } : item)))
-    requestGeneration('gen.request', { intent: screen.intent, kind: 'view', context: screen.context, fresh: true }, (text) => {
-      setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, progress: text } : item)))
-    })
-      .then((result) => {
-        if (result.kind !== 'view') throw new Error('Expected a view')
-        setScreens((stack) =>
-          stack.map((item) => (item.id === screen.id ? { ...item, phase: 'ready', viewId: result.viewId, progress: undefined, rev: Date.now() } : item)),
-        )
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Couldn’t load'
-        setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'error', error: message, progress: undefined } : item)))
-      })
-  }
-
-  function regenerate(screen: Screen) {
-    if (!screen.intent) return
-    setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'loading', error: undefined } : item)))
-    requestGeneration('gen.request', { intent: screen.intent, kind: 'view', context: screen.context, fresh: true }, (text) => {
-      setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, progress: text } : item)))
-    })
-      .then((result) => {
-        if (result.kind !== 'view') throw new Error('Expected a view')
-        setScreens((stack) =>
-          stack.map((item) =>
-            item.id === screen.id ? { ...item, phase: 'ready', viewId: result.viewId, progress: undefined, rev: Date.now() } : item,
-          ),
-        )
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Couldn’t load'
-        setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'error', error: message } : item)))
-      })
-  }
-
+  const showBar = stack.length > 0 || ahead.length > 0
   return (
-    <ScreenContext.Provider value={api}>
-      <GenerativeProvider api={{ open: (intent) => api.open(intent), busy }}>
-        <div className="slop-world">
-          <div className="slop-world-base" hidden={screens.length > 0}>
+    <div className={top?.phase === 'loading' ? 'slop-world is-loading' : 'slop-world'}>
+      {showBar ? (
+        <header className="slop-screen-bar" data-slop-chrome="">
+          <IconButton icon="ChevronLeft" label="Back" disabled={!stack.length} onClick={back} />
+          <IconButton icon="ChevronRight" label="Forward" disabled={!ahead.length} onClick={forward} />
+          <div className="slop-screen-title">{top ? top.title : appName}</div>
+          {top?.intent ? (
+            <IconButton
+              icon="RotateCw"
+              label="Reload"
+              disabled={top.phase === 'loading'}
+              onClick={() => {
+                patch(top.id, { phase: 'loading' })
+                load(top, true)
+              }}
+            />
+          ) : null}
+        </header>
+      ) : null}
+      <div className="slop-screen">
+        <div className="slop-screen-body" ref={stageRef}>
+          <div className="slop-world-base" hidden={Boolean(top)}>
             {children}
           </div>
           {top ? (
             <ScreenTitle key={top.id}>
-              <ScreenStage
-                screen={top}
-                onPop={() => setScreens((stack) => stack.slice(0, -1))}
-                onRetry={() => retry(top)}
-                onRegenerate={() => regenerate(top)}
-              />
+              {top.phase === 'error' ? (
+                <GenError
+                  onRetry={() => {
+                    patch(top.id, { phase: 'loading' })
+                    load(top, true)
+                  }}
+                />
+              ) : top.viewId && top.phase === 'ready' ? (
+                <ViewFrame viewId={top.viewId} rev={top.rev} />
+              ) : (
+                <Materializing title={top.title} />
+              )}
             </ScreenTitle>
           ) : null}
-          <ConfirmHost />
         </div>
-      </GenerativeProvider>
-    </ScreenContext.Provider>
-  )
-}
-
-function ScreenStage({
-  screen,
-  onPop,
-  onRetry,
-  onRegenerate,
-}: {
-  screen: Screen
-  onPop: () => void
-  onRetry: () => void
-  onRegenerate: () => void
-}) {
-  return (
-    <div className={screen.phase === 'loading' ? 'slop-screen is-loading' : 'slop-screen'}>
-      <header className="slop-screen-bar">
-        <IconButton icon="ChevronLeft" label="Back" onClick={onPop} />
-        <div className="slop-screen-title">{screen.title}</div>
-        <Menu
-          align="end"
-          trigger={<IconButton icon="MoreHorizontal" label="Screen options" />}
-          items={[{ label: 'Reload', disabled: !screen.intent, onSelect: onRegenerate }]}
-        />
-      </header>
-      <div className="slop-screen-body">
-        {screen.phase === 'error' ? (
-          <GenError message={screen.error} onRetry={screen.intent ? onRetry : undefined} />
-        ) : screen.viewId ? (
-          <ViewFrame
-            viewId={screen.viewId}
-            rev={screen.rev}
-            params={screen.params ?? { title: screen.title, intent: screen.intent }}
-            context={screen.context}
-          />
-        ) : (
-          <Materializing title={screen.title} showTitle={false} />
-        )}
       </div>
+      <ConfirmHost />
     </div>
   )
 }
 
-function Materializing({ title, showTitle = true }: { title: string; status?: string; showTitle?: boolean }) {
+const TARGETS = [
+  'button',
+  'a',
+  'summary',
+  '[role="button"]',
+  '[role="link"]',
+  '[role="tab"]',
+  '[role="option"]',
+  '[role="menuitem"]',
+  '[role="switch"]',
+  '[role="checkbox"]',
+  '[role="radio"]',
+  '.slop-list-item',
+  '.slop-card.is-clickable',
+  '.slop-chip',
+].join(',')
+
+/** Catch clicks, Enter, changes and submits before the screen's own handlers. The screen never wires anything. */
+function captureInteractions(onInteraction: (interaction: Interaction) => void): () => void {
+  const inScreen = (el: Element) => Boolean(el.closest('.slop-screen-body')) && !el.closest('[data-slop-chrome]')
+
+  const onClick = (event: MouseEvent) => {
+    const target = event.target instanceof Element ? event.target : null
+    if (!target || !inScreen(target)) return
+    if (target.closest('input, textarea, select, option, label')) return
+    const hit = target.closest(TARGETS)
+    if (!hit || hit.closest('[aria-disabled="true"], :disabled')) return
+    event.preventDefault()
+    event.stopPropagation()
+    onInteraction({ action: 'click', label: labelOf(hit) })
+  }
+
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter' || event.isComposing) return
+    const target = event.target instanceof HTMLElement ? event.target : null
+    if (!target || !inScreen(target)) return
+    const isField = target instanceof HTMLInputElement || (target instanceof HTMLTextAreaElement && (event.metaKey || event.ctrlKey))
+    if (!isField) return
+    event.preventDefault()
+    event.stopPropagation()
+    const field = target as HTMLInputElement | HTMLTextAreaElement
+    onInteraction({ action: 'enter', label: fieldLabel(field), value: field.value.slice(0, 400) })
+  }
+
+  const onChange = (event: Event) => {
+    const target = event.target
+    if (!(target instanceof HTMLSelectElement || target instanceof HTMLInputElement) || !inScreen(target)) return
+    if (target instanceof HTMLInputElement && !['checkbox', 'radio', 'range', 'color', 'date', 'time'].includes(target.type)) return
+    event.stopPropagation()
+    const value = target instanceof HTMLInputElement && (target.type === 'checkbox' || target.type === 'radio') ? (target.checked ? 'on' : 'off') : target.value
+    onInteraction({ action: 'change', label: fieldLabel(target), value })
+  }
+
+  const onSubmit = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null
+    if (!target || !inScreen(target)) return
+    event.preventDefault()
+    event.stopPropagation()
+    onInteraction({ action: 'submit', label: target.getAttribute('aria-label') || 'the form' })
+  }
+
+  document.addEventListener('click', onClick, true)
+  document.addEventListener('keydown', onKey, true)
+  document.addEventListener('change', onChange, true)
+  document.addEventListener('submit', onSubmit, true)
+  return () => {
+    document.removeEventListener('click', onClick, true)
+    document.removeEventListener('keydown', onKey, true)
+    document.removeEventListener('change', onChange, true)
+    document.removeEventListener('submit', onSubmit, true)
+  }
+}
+
+function labelOf(el: Element): string {
+  const own = el.getAttribute('aria-label') || el.getAttribute('title') || (el as HTMLElement).innerText || el.textContent || ''
+  const text = clip(own, 80)
+  if (text) return text
+  const icon = el.querySelector('[data-icon]')?.getAttribute('data-icon')
+  return icon || el.tagName.toLowerCase()
+}
+
+function fieldLabel(field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string {
+  const byFor = field.id ? document.querySelector(`label[for="${CSS.escape(field.id)}"]`)?.textContent : ''
+  const wrapped = field.closest('label')?.textContent
+  const fieldBox = field.closest('.slop-field')?.querySelector('.slop-field-label')?.textContent
+  const raw = field.getAttribute('aria-label') || byFor || fieldBox || wrapped || ('placeholder' in field ? field.placeholder : '') || field.name || 'a field'
+  return clip(raw, 60)
+}
+
+function fieldValues(root: HTMLElement): { field: string; value: string }[] {
+  const out: { field: string; value: string }[] = []
+  root.querySelectorAll('input, textarea, select').forEach((node) => {
+    const field = node as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    if (field.closest('[hidden]') || (field instanceof HTMLInputElement && field.type === 'password')) return
+    const value = field instanceof HTMLInputElement && (field.type === 'checkbox' || field.type === 'radio') ? (field.checked ? 'on' : '') : field.value
+    if (value) out.push({ field: fieldLabel(field), value: value.slice(0, 200) })
+  })
+  return out.slice(0, 20)
+}
+
+function visibleText(root: HTMLElement): string {
+  const shown = [...root.children].find((child) => !(child as HTMLElement).hidden) as HTMLElement | undefined
+  return clip((shown || root).innerText || '', 2500)
+}
+
+function describe(interaction: Interaction): string {
+  if (interaction.action === 'enter') return `Typed “${interaction.value}” in ${interaction.label} and pressed Enter`
+  if (interaction.action === 'change') return `Set ${interaction.label} to ${interaction.value}`
+  if (interaction.action === 'submit') return `Submitted ${interaction.label}`
+  return `Clicked “${interaction.label}”`
+}
+
+function Materializing({ title }: { title: string }) {
   return (
     <div className="slop-material" role="status" aria-label={`Loading ${title}`}>
-      {showTitle ? <h2 className="slop-material-title">{title}</h2> : null}
       <div className="slop-skeleton" aria-hidden>
-        {showTitle ? null : <div className="slop-skeleton-heading" />}
+        <div className="slop-skeleton-heading" />
         <div className="slop-skeleton-line" />
         <div className="slop-skeleton-line is-mid" />
         <div className="slop-skeleton-line is-short" />
@@ -436,7 +418,7 @@ function GenError({ message, onRetry }: { message?: string; onRetry?: () => void
     if (message) console.warn(message)
   }, [message])
   return (
-    <div className="slop-gen-error">
+    <div className="slop-gen-error" data-slop-chrome="">
       <Heading level={2}>This page couldn’t be loaded.</Heading>
       {onRetry ? (
         <Button variant="primary" onClick={onRetry}>
@@ -447,12 +429,10 @@ function GenError({ message, onRetry }: { message?: string; onRetry?: () => void
   )
 }
 
-type ViewProps = { params: unknown; context: unknown }
+const viewCache = new Map<string, ComponentType>()
 
-const viewCache = new Map<string, ComponentType<ViewProps>>()
-
-function ViewFrame({ viewId, rev, params, context }: { viewId: string; rev: number; params: unknown; context: unknown }) {
-  const [Comp, setComp] = useState<ComponentType<ViewProps> | null>(() => viewCache.get(viewId) ?? null)
+function ViewFrame({ viewId, rev }: { viewId: string; rev: number }) {
+  const [Comp, setComp] = useState<ComponentType | null>(() => viewCache.get(viewId) ?? null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -467,11 +447,11 @@ function ViewFrame({ viewId, rev, params, context }: { viewId: string; rev: numb
     setError(null)
     const url = `/api/apps/${encodeURIComponent(frameAppId)}/views/${encodeURIComponent(viewId)}/bundle.js`
     import(/* @vite-ignore */ url)
-      .then((mod: { default?: ComponentType<ViewProps> }) => {
+      .then((mod: { default?: ComponentType }) => {
         if (cancel) return
         if (typeof mod.default !== 'function') throw new Error('View has no default export')
         viewCache.set(viewId, mod.default)
-        setComp(() => mod.default as ComponentType<ViewProps>)
+        setComp(() => mod.default as ComponentType)
       })
       .catch((err: unknown) => {
         if (cancel) return
@@ -483,10 +463,10 @@ function ViewFrame({ viewId, rev, params, context }: { viewId: string; rev: numb
   }, [viewId, rev])
 
   if (error) return <GenError message={error} />
-  if (!Comp) return <Materializing title="Page" showTitle={false} />
+  if (!Comp) return <Materializing title="Page" />
   return (
     <ViewBoundary key={`${viewId}:${rev}`}>
-      <Comp params={params} context={context} />
+      <Comp />
     </ViewBoundary>
   )
 }
@@ -502,32 +482,47 @@ class ViewBoundary extends Component<{ children: ReactNode }, { error: string | 
   }
 }
 
-function pending(id: string, title: string, context: unknown): Screen {
-  return { id, title, intent: title, context, phase: 'loading', rev: 0, params: { title, intent: title } }
-}
-
 function fromPersisted(screen: PersistedScreen): Screen {
   return {
     id: screen.id,
     title: screen.title,
     intent: screen.intent,
     context: screen.context,
-    params: screen.params ?? { title: screen.title, intent: screen.intent },
+    key: screen.key,
     viewId: screen.viewId,
     phase: 'ready',
     rev: 0,
   }
 }
 
-function toPersisted(screen: Screen): PersistedScreen {
+function toPersisted(screen: Screen, isAhead: boolean): PersistedScreen {
   return {
     id: screen.id,
     title: screen.title,
     viewId: screen.viewId || '',
     intent: screen.intent,
-    params: screen.params,
-    context: screen.context,
+    context: slim(screen.context),
+    key: screen.key,
+    ...(isAhead ? { ahead: true } : {}),
   }
+}
+
+/** Saved screens keep enough context to reload, not the whole page text. */
+function slim(context: unknown): unknown {
+  if (!context || typeof context !== 'object' || !('shown' in context)) return context
+  const shown = (context as { shown?: unknown }).shown
+  return { ...context, shown: typeof shown === 'string' ? clip(shown, 1200) : shown }
+}
+
+function clip(text: string, max: number): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+  return line.length <= max ? line : `${line.slice(0, max - 1).trim()}…`
+}
+
+function hash(text: string): string {
+  let h = 5381
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0
+  return h.toString(36)
 }
 
 function uid(): string {

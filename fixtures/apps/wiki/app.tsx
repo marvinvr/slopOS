@@ -55,7 +55,7 @@ export default function App() {
             {lede.status === 'loading' ? (
               <p className="slop-material-status">
                 <span className="slop-material-dot" aria-hidden />
-                <span>{lede.progress || 'Writing a welcome…'}</span>
+                <span>Loading…</span>
               </p>
             ) : null}
             {lede.status === 'error' ? (

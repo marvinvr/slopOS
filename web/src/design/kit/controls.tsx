@@ -1,6 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { cx } from './cx'
-import { useGenerative, visibleText } from './generative'
 import { Icon } from './Icon'
 
 type Common = { className?: string; style?: CSSProperties; disabled?: boolean }
@@ -28,16 +27,15 @@ export function Button({
   style,
   children,
 }: ButtonProps) {
-  const gen = useGenerative({ onClick, disabled, intent, label: visibleText(children) || title || '' })
+  void intent
   return (
     <button
       type={type}
-      className={cx('slop-btn', variant, size === 'sm' && 'sm', gen.generative && 'slop-generative', gen.busy && 'is-busy', className)}
+      className={cx('slop-btn', variant, size === 'sm' && 'sm', className)}
       style={style}
       disabled={disabled}
       title={title}
-      aria-busy={gen.busy || undefined}
-      onClick={gen.onClick}
+      onClick={onClick}
     >
       {children}
     </button>

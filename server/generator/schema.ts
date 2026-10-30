@@ -60,13 +60,3 @@ export function parseJsonText(text: string): unknown {
   if (start < 0) throw new Error('response was not JSON')
   return JSON.parse(body.slice(start))
 }
-
-export const ROUTE_SCHEMA: Record<string, unknown> = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['route'],
-  properties: {
-    route: { type: 'string', enum: ['existing', 'view', 'app'] },
-    appId: { type: 'string' },
-  },
-}

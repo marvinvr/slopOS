@@ -57,34 +57,6 @@ export async function ensureWorkspace(appId: string): Promise<string> {
   return dir
 }
 
-export async function writeWorkspace(appId: string, files: Record<string, string>): Promise<string> {
-  const dir = await ensureWorkspace(appId)
-  await Promise.all(Object.entries(files).map(([name, content]) => fs.writeFile(path.join(dir, name), content)))
-  return dir
-}
-
-export async function readWorkspace(appId: string, names: string[]): Promise<string | null> {
-  const dir = workspaceFor(appId)
-  for (const name of names) {
-    try {
-      return await fs.readFile(path.join(dir, name), 'utf8')
-    } catch {
-      /* try the next filename */
-    }
-  }
-  return null
-}
-
-export async function readJsonWorkspace(appId: string, name: string): Promise<unknown | null> {
-  const text = await readWorkspace(appId, [name])
-  if (!text) return null
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    return null
-  }
-}
-
 type HistoryKind = 'create' | 'edit' | 'regenerate' | 'fix'
 
 export async function saveAppVersion(input: {

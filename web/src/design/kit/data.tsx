@@ -1,6 +1,5 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { cx } from './cx'
-import { useGenerative, visibleText } from './generative'
 import { Icon } from './Icon'
 
 type Box = { className?: string; style?: CSSProperties; children?: ReactNode }
@@ -94,16 +93,9 @@ export type LinkProps = Box & {
 }
 
 export function Link({ onClick, intent, disabled, className, style, children }: LinkProps) {
-  const gen = useGenerative({ onClick, disabled, intent, label: visibleText(children) })
+  void intent
   return (
-    <button
-      type="button"
-      className={cx('slop-link', gen.generative && 'slop-generative', gen.busy && 'is-busy', className)}
-      style={style}
-      disabled={disabled}
-      aria-busy={gen.busy || undefined}
-      onClick={gen.onClick}
-    >
+    <button type="button" className={cx('slop-link', className)} style={style} disabled={disabled} onClick={onClick}>
       {children}
     </button>
   )

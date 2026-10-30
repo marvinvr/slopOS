@@ -1,6 +1,5 @@
 import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { cx } from './cx'
-import { useGenerative } from './generative'
 
 type Box = { className?: string; style?: CSSProperties; children?: ReactNode }
 
@@ -166,12 +165,11 @@ export function Toolbar({ title, leading, trailing, className, style, children }
 export type CardProps = Box & {
   padding?: number | string
   onClick?: () => void
-  /** Makes the card a generative destination when `onClick` is omitted. */
+  /** Marks the card as clickable without a handler (the runtime catches the click on generated screens). */
   intent?: string
 }
 export function Card({ padding, onClick, intent, className, style, children }: CardProps) {
-  const gen = useGenerative({ onClick, intent, label: intent || 'Open', eligible: Boolean(onClick) || Boolean(intent) })
-  const clickable = Boolean(gen.onClick)
+  const clickable = Boolean(onClick) || Boolean(intent)
   if (!clickable) {
     return (
       <div className={cx('slop-card', className)} style={{ padding, ...style }}>
@@ -183,14 +181,13 @@ export function Card({ padding, onClick, intent, className, style, children }: C
     <div
       role="button"
       tabIndex={0}
-      className={cx('slop-card', 'is-clickable', gen.generative && 'slop-generative', gen.busy && 'is-busy', className)}
+      className={cx('slop-card', 'is-clickable', className)}
       style={{ padding, ...style }}
-      aria-busy={gen.busy || undefined}
-      onClick={gen.onClick}
+      onClick={onClick}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
-        gen.onClick?.()
+        onClick?.()
       }}
     >
       {children}

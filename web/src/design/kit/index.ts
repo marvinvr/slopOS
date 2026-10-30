@@ -1,6 +1,5 @@
 import './kit.css'
 
-export { GenerativeProvider } from './generative'
 export { Icon } from './Icon'
 export type { IconProps } from './Icon'
 export { Button, IconButton, Input, TextArea, Select, Checkbox, Switch, Slider } from './controls'

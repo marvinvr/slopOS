@@ -5,6 +5,8 @@ const params = new URLSearchParams(location.search)
 export const frameAppId = params.get('app') ?? ''
 export const frameWinId = params.get('win') ?? ''
 export const frameVersion = params.get('v') ?? ''
+/** Fixtures are hand-written apps with their own handlers; only generated screens hand interactions to the generator. */
+export const frameCapture = params.get('capture') !== '0'
 
 type Waiter = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: number }
 

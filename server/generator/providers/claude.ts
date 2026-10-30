@@ -1,13 +1,11 @@
 import path from 'node:path'
 import { binFor, looksLikeAuth, settingsFor, signedOutReason } from '../config'
 import { childEnv } from '../child-env'
-import { isInside } from '../safe-path'
 import { loadSession, saveSession } from '../sessions'
 import type { Availability, GenEvent, GeneratorProvider, RunOptions } from '../types'
-import { FILE_SYSTEM_PROMPT, JSON_SESSION_RULES } from '../prompts'
+import { JSON_SESSION_RULES, SCREEN_SYSTEM_PROMPT } from '../prompts'
 import { capture, memoAvailability, publicError } from './util'
 
-const FILE_TOOLS = ['Read', 'Write', 'Edit']
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 
 type LooseMessage = {
@@ -73,7 +71,6 @@ async function resolveResume(opts: RunOptions): Promise<string | undefined> {
 async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
   const sdk = await import('@anthropic-ai/claude-agent-sdk')
   const cwd = path.resolve(opts.cwd)
-  const tools = opts.kind === 'content' || opts.kind === 'route' ? [] : FILE_TOOLS
   const resume = await resolveResume(opts)
   const abort = new AbortController()
   const onAbort = () => abort.abort()
@@ -84,14 +81,15 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
     prompt: opts.prompt,
     options: {
       cwd,
-      tools,
-      allowedTools: tools,
-      disallowedTools: ['Bash', 'PowerShell', 'WebSearch', 'WebFetch', 'Task', 'Agent', 'Skill', 'NotebookEdit', 'TodoWrite'],
+      // Every turn is one answer: no tools at all.
+      tools: [],
+      allowedTools: [],
+      disallowedTools: ['Bash', 'PowerShell', 'WebSearch', 'WebFetch', 'Task', 'Agent', 'Skill', 'NotebookEdit', 'TodoWrite', 'Read', 'Write', 'Edit'],
       permissionMode: 'dontAsk',
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
-        append: opts.kind === 'content' || opts.kind === 'route' ? JSON_SESSION_RULES : FILE_SYSTEM_PROMPT,
+        append: opts.kind === 'content' ? JSON_SESSION_RULES : SCREEN_SYSTEM_PROMPT,
       },
       settingSources: [],
       mcpServers: {},
@@ -99,17 +97,12 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
       resume,
       abortController: abort,
       env: childEnv(),
-      maxTurns: tools.length ? 16 : 2,
+      maxTurns: 2,
       persistSession: true,
       model: opts.model && opts.model !== 'default' ? opts.model : undefined,
       effort: effortOf(opts.effort),
       outputFormat: opts.jsonSchema ? { type: 'json_schema', schema: opts.jsonSchema } : undefined,
-      canUseTool: async (toolName, input) => {
-        if (!FILE_TOOLS.includes(toolName)) return { behavior: 'deny', message: 'Only reading and editing files in the workspace is allowed.' }
-        const outside = pathsOf(input).some((item) => !isInside(cwd, item))
-        if (outside) return { behavior: 'deny', message: 'That path is outside the workspace.' }
-        return { behavior: 'allow' }
-      },
+      canUseTool: async () => ({ behavior: 'deny', message: 'Answer in text. No tools.' }),
     },
   })
   try {

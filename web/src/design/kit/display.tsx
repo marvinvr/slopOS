@@ -1,6 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { cx } from './cx'
-import { useGenerative } from './generative'
 import { Icon } from './Icon'
 
 type Box = { className?: string; style?: CSSProperties; children?: ReactNode }
@@ -106,18 +105,17 @@ export type ListItemProps = {
   style?: CSSProperties
 }
 export function ListItem({ icon, title, subtitle, trailing, selected, disabled, intent, onClick, className, style }: ListItemProps) {
-  const gen = useGenerative({ onClick, disabled, intent, label: title })
+  void intent
   return (
     <li>
       <button
         type="button"
-        className={cx('slop-list-item', gen.generative && 'slop-generative', gen.busy && 'is-busy', className)}
+        className={cx('slop-list-item', className)}
         style={style}
         role="option"
         aria-selected={Boolean(selected)}
-        aria-busy={gen.busy || undefined}
         disabled={disabled}
-        onClick={gen.onClick}
+        onClick={onClick}
       >
         {icon ? (
           <span className="slop-list-icon">

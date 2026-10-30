@@ -1,7 +1,12 @@
 # slopOS app SDK
 
-This document is the whole contract for a slopOS app. Follow it exactly.
-An app that ignores it will not look like it belongs here, and may not run.
+This document is the whole contract for a hand-written slopOS app (the fixtures, or anything you write yourself).
+Follow it exactly. An app that ignores it will not look like it belongs here, and may not run.
+
+> Generated apps no longer use most of this. The generator renders one static screen at a time and the runtime turns
+> every interaction into a request for the next screen (see `docs/SPEC.md › The infinite world`). Its prompt carries its
+> own short kit and token list (`server/generator/prompts.ts`). The generative sections below (handler-less controls,
+> `GenerativeView`, `openGenerative`, `useScreens`) describe the previous model and do not apply to generated screens.
 
 ## Hard rules
 

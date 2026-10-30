@@ -33,4 +33,8 @@ export type PersistedScreen = {
   intent?: string
   params?: unknown
   context?: unknown
+  /** Cache key of the interaction that produced this screen. */
+  key?: string
+  /** On the forward side of the history. */
+  ahead?: boolean
 }

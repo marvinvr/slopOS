@@ -1,18 +1,17 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Readable, Writable } from 'node:stream'
-import { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, type ClientConnection, type SessionConfigOption, type SessionUpdate } from '@agentclientprotocol/sdk'
+import { client, methods, ndJsonStream, PROTOCOL_VERSION, type ClientConnection, type SessionConfigOption, type SessionUpdate } from '@agentclientprotocol/sdk'
 import { binFor, looksLikeAuth, settingsFor, signedOutReason } from '../config'
-import { FILE_SYSTEM_PROMPT, JSON_SESSION_RULES } from '../prompts'
+import { JSON_SESSION_RULES, SCREEN_SYSTEM_PROMPT } from '../prompts'
 import { childEnv } from '../child-env'
 import { loadSession, saveSession } from '../sessions'
-import { allowWorkspaceTool, resolveInside } from '../safe-path'
 import type { Availability, GenEvent, GeneratorProvider, RunOptions } from '../types'
 import { capture, memoAvailability, publicError } from './util'
 
-type Mode = 'files' | 'none'
+/** Every turn is a single answer. `screen` and `json` only pick the system prompt. */
+type Mode = 'screen' | 'json'
 
 type Live = {
   key: string
@@ -73,29 +72,9 @@ async function startPool(key: string, model: string, effort: string): Promise<Li
     throw new Error('Grok did not expose stdio pipes')
   }
   const holder: { live?: Live } = {}
+  // No tools: permission requests are refused and the client offers no file system.
   const app = client({ name: 'slopOS' })
-    .onRequest(methods.client.session.requestPermission, (ctx) => decide(holder.live, ctx.params))
-    .onRequest(methods.client.fs.readTextFile, async (ctx) => {
-      const root = workspaceOf(holder.live, ctx.params.sessionId)
-      if (!root) throw RequestError.invalidParams(undefined, 'unknown session')
-      const full = await resolveInside(root, ctx.params.path)
-      let text = await fs.readFile(full, 'utf8')
-      if (ctx.params.line || ctx.params.limit) {
-        const lines = text.split('\n')
-        const start = Math.max(0, (ctx.params.line || 1) - 1)
-        const end = ctx.params.limit ? start + ctx.params.limit : lines.length
-        text = lines.slice(start, end).join('\n')
-      }
-      return { content: text }
-    })
-    .onRequest(methods.client.fs.writeTextFile, async (ctx) => {
-      const meta = holder.live?.sessions.get(ctx.params.sessionId)
-      if (!meta || meta.mode === 'none') throw RequestError.invalidParams(undefined, 'writes are not allowed for this turn')
-      const full = await resolveInside(meta.cwd, ctx.params.path)
-      await fs.mkdir(path.dirname(full), { recursive: true })
-      await fs.writeFile(full, ctx.params.content)
-      return {}
-    })
+    .onRequest(methods.client.session.requestPermission, (ctx) => refuse(ctx.params.options))
     .onNotification(methods.client.session.update, (ctx) => {
       holder.live?.updates.get(ctx.params.sessionId)?.(ctx.params.update)
     })
@@ -132,7 +111,7 @@ async function startPool(key: string, model: string, effort: string): Promise<Li
     const init = await connection.agent.request(methods.agent.initialize, {
       protocolVersion: PROTOCOL_VERSION,
       clientInfo: { name: 'slopOS', version: '0.1.0' },
-      clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
     })
     live.loadSession = Boolean(init.agentCapabilities?.loadSession)
     return live
@@ -144,24 +123,14 @@ async function startPool(key: string, model: string, effort: string): Promise<Li
   }
 }
 
-/** Grok's own system prompt tells it to verify with tools. Replace that on session/new so a file turn writes once and stops. */
+/** Grok's own system prompt tells it to work with tools. Replace it on session/new so a turn is one answer. */
 function sessionMeta(mode: Mode): Record<string, string> {
-  return { systemPromptOverride: mode === 'none' ? JSON_SESSION_RULES : FILE_SYSTEM_PROMPT }
+  return { systemPromptOverride: mode === 'json' ? JSON_SESSION_RULES : SCREEN_SYSTEM_PROMPT }
 }
 
-function workspaceOf(live: Live | undefined, sessionId: string): string | null {
-  return live?.sessions.get(sessionId)?.cwd ?? null
-}
-
-function decide(live: Live | undefined, params: { sessionId: string; toolCall: { kind?: string | null; name?: string | null; title?: string | null; locations?: { path: string }[] | null; rawInput?: unknown }; options: { optionId: string; kind: string }[] }): { outcome: { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' } } {
-  const meta = live?.sessions.get(params.sessionId)
-  const allow = meta
-    ? allowWorkspaceTool(meta.cwd, params.toolCall, meta.mode)
-    : false
-  const kinds = allow ? ['allow_once', 'allow_always'] : ['reject_once', 'reject_always']
-  const option = params.options.find((item) => kinds.includes(item.kind))
-  if (!option) return { outcome: { outcome: 'cancelled' } }
-  return { outcome: { outcome: 'selected', optionId: option.optionId } }
+function refuse(options: { optionId: string; kind: string }[]): { outcome: { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' } } {
+  const option = options.find((item) => item.kind === 'reject_once' || item.kind === 'reject_always')
+  return option ? { outcome: { outcome: 'selected', optionId: option.optionId } } : { outcome: { outcome: 'cancelled' } }
 }
 
 function textOf(content: { type?: string; text?: string } | undefined): string {
@@ -248,7 +217,7 @@ async function ensureSessionSettings(live: Live, sessionId: string, model: strin
 
 async function openSession(live: Live, opts: RunOptions, restarted: boolean): Promise<string> {
   const cwd = path.resolve(opts.cwd)
-  const mode: Mode = opts.kind === 'content' || opts.kind === 'route' ? 'none' : 'files'
+  const mode: Mode = opts.kind === 'content' ? 'json' : 'screen'
   let sessionId: string | undefined
   let advertised: SessionConfigOption[] | null | undefined
   if (!restarted && opts.resumeSessionId && !opts.freshSession) {

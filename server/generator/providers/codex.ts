@@ -22,8 +22,7 @@ const availability = memoAvailability(async (): Promise<Availability> => {
 })
 
 function argsFor(opts: RunOptions, schemaPath: string | null, outPath: string | null, sessionId?: string): string[] {
-  // Sandbox flags belong on `exec`, before `resume`. The resume subcommand does not
-  // accept them, and without them a resumed turn comes back read-only.
+  // Sandbox flags belong on `exec`, before `resume`. The resume subcommand does not accept them.
   const args = [
     'exec',
     '--json',
@@ -31,10 +30,9 @@ function argsFor(opts: RunOptions, schemaPath: string | null, outPath: string | 
     '--ignore-rules',
     '-C',
     path.resolve(opts.cwd),
+    // Read-only: the answer is text, nothing is written to the workspace.
     '--sandbox',
-    'workspace-write',
-    '-c',
-    'sandbox_workspace_write.network_access=false',
+    'read-only',
     '-c',
     `model_reasoning_effort=${opts.effort}`,
     '-c',

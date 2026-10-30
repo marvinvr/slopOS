@@ -17,7 +17,9 @@ export function useWindowBridge(win: Win, iframeRef: RefObject<HTMLIFrameElement
       const data = event.data as SlopMessage | null
       if (!data || data.slop !== SLOP_PROTOCOL) return
       if (data.winId && data.winId !== win.id) return
-      void handleMessage(win, data, (payload) => {
+      // Read the window at message time: a window that opened before its app existed changes appId in place.
+      const current = useShell.getState().windows.find((item) => item.id === win.id) ?? win
+      void handleMessage(current, data, (payload) => {
         if (!data.id) return
         frame.postMessage({ slop: SLOP_PROTOCOL, type: 'response', id: data.id, payload }, '*')
       })
