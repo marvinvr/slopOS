@@ -16,7 +16,7 @@ export function GenerationPanel({ panel }: { panel: PanelJob }) {
   const [frozen, setFrozen] = useState<number | null>(null)
   const [hover, setHover] = useState(false)
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'settled'>('idle')
-  const label = providerLabel(status.provider)
+  const label = providerLabel(status.provider) || 'the generator'
 
   const done = events.find((event) => event.type === 'done')
   const error = [...events].reverse().find((event) => event.type === 'error')

@@ -162,7 +162,7 @@ export function Drawer() {
   const menuItems: MenuNode[] = menuApp
     ? [
         { type: 'item', label: 'Open', onSelect: () => openApp(menuApp.id) },
-        { type: 'item', label: `Edit with ${provider}…`, onSelect: () => openEditApp(menuApp.id) },
+        { type: 'item', label: provider ? `Edit with ${provider}…` : 'Edit…', onSelect: () => openEditApp(menuApp.id) },
         { type: 'item', label: 'Regenerate', onSelect: () => regenerateApp(menuApp.id) },
         { type: 'item', label: 'Version History…', onSelect: () => setShellPrompt({ kind: 'history', appId: menuApp.id }) },
         { type: 'sep' },
@@ -213,7 +213,7 @@ export function Drawer() {
               <span className="shell-tile shell-new-tile">
                 <Icon name="Plus" size={26} />
               </span>
-              <span>New app with {provider}…</span>
+              <span>{provider ? `New app with ${provider}…` : 'New app…'}</span>
             </button>
           )}
           {shown.map((app, index) => (

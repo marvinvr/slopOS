@@ -28,7 +28,11 @@ export function Welcome() {
           <Mark size={52} />
         </div>
         <h1>slopOS</h1>
-        <p>Every app here is written by {provider}, the moment you ask for it.</p>
+        <p>
+          {provider
+            ? `Every app here is written by ${provider}, the moment you ask for it.`
+            : 'Every app here is written the moment you ask for it.'}
+        </p>
         <div className="shell-welcome-actions">
           <Button variant="primary" onClick={() => void enter()}>
             Enter slopOS

@@ -19,7 +19,13 @@ export function StatusArea() {
   const running = jobs.some(jobActive)
   const provider = providerLabel(status.provider)
   const phase: GeneratorPhase = running ? 'is-busy' : status.available ? 'is-ready' : 'is-off'
-  const genLabel = running ? `${provider} is generating` : status.available ? `${provider} ready` : `${provider} unavailable`
+  const genLabel = !provider
+    ? 'Checking the generator'
+    : running
+      ? `${provider} is generating`
+      : status.available
+        ? `${provider} ready`
+        : `${provider} unavailable`
   const activeJobs = jobs.filter(jobActive)
   const recentJobs = jobs.filter((job) => !jobActive(job)).slice(0, 6)
 
@@ -127,11 +133,11 @@ export function StatusArea() {
         {genOpen ? (
           <div className="gen-queue" role="dialog" aria-label={genLabel}>
             <p className="gen-status-line">
-              {provider}
+              {provider || 'Generator'}
               {status.model ? ` · ${status.model}` : ''}
               {status.effort ? ` · ${status.effort}` : ''}
             </p>
-            {!status.available ? <Text size="sm">{status.reason || `${provider} isn't available`}</Text> : null}
+            {!status.available ? <Text size="sm">{status.reason || `${provider || 'The generator'} isn't available`}</Text> : null}
             {activeJobs.length ? <p className="gen-status-kicker">Queue</p> : null}
             {activeJobs.map((job) => (
               <div key={job.id} className="gen-queue-row">

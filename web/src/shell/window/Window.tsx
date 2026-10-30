@@ -4,7 +4,7 @@ import { cx } from '../../design/kit/cx'
 import { useWindowBridge } from '../bridge/useWindowBridge'
 import { fixApp, providerLabel, useGrokStatus } from '../generation'
 import { MENU_H } from '../metrics'
-import { useShell, type Win } from '../store'
+import { clearEntering, isEntering, useShell, type Win } from '../store'
 
 const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 
@@ -13,6 +13,7 @@ export function Window({ win }: { win: Win }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const dragged = useRef(false)
   const [zooming, setZooming] = useState(false)
+  const [opening, setOpening] = useState(() => isEntering(win.id))
   const focused = useShell((state) => state.focusedWindowId === win.id && win.phase !== 'minimized')
   const app = useShell((state) => state.apps.find((item) => item.id === win.appId))
   const error = useShell((state) => state.windowErrors[win.id])
@@ -29,34 +30,46 @@ export function Window({ win }: { win: Win }) {
   useWindowBridge(win, iframeRef)
 
   useEffect(() => {
-    if (win.phase !== 'closing') return
-    const timer = window.setTimeout(() => removeWindow(win.id), 160)
-    return () => window.clearTimeout(timer)
-  }, [win.phase, win.id, removeWindow])
+    if (!opening) return
+    clearEntering(win.id)
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setOpening(false)
+  }, [opening, win.id])
 
   useEffect(() => {
-    if (win.phase !== 'minimizing') return
+    const leaving = win.phase === 'closing' || win.phase === 'minimizing'
+    if (!leaving) return
     const el = ref.current
+    const done = () => {
+      if (win.phase === 'closing') removeWindow(win.id)
+      else commitMinimized(win.id)
+    }
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (!el || reduce) {
-      commitMinimized(win.id)
+      done()
       return
     }
-    const icon = document.querySelector(`[data-dock-app="${win.appId}"]`)
+    const icon = document.querySelector(`[data-dock-app="${CSS.escape(win.appId)}"]`)
     const from = el.getBoundingClientRect()
     let dx = 0
-    let dy = 120
+    let dy = 96
     if (icon) {
       const to = icon.getBoundingClientRect()
       dx = to.left + to.width / 2 - (from.left + from.width / 2)
       dy = to.top + to.height / 2 - (from.top + from.height / 2)
     }
-    el.style.transition = 'transform 200ms var(--slop-ease), opacity 200ms ease'
-    el.style.transform = `translate(${dx}px, ${dy}px) scale(0.18)`
-    el.style.opacity = '0.15'
-    const timer = window.setTimeout(() => commitMinimized(win.id), 200)
-    return () => window.clearTimeout(timer)
-  }, [win.phase, win.id, win.appId, commitMinimized])
+    el.style.animation = 'none'
+    el.style.transformOrigin = 'center center'
+    el.style.transition = 'transform 180ms var(--slop-ease), opacity 160ms ease'
+    const frame = window.requestAnimationFrame(() => {
+      el.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(0.2)`
+      el.style.opacity = '0'
+    })
+    const timer = window.setTimeout(done, 180)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [win.phase, win.id, win.appId, removeWindow, commitMinimized])
 
   const wasMax = useRef(win.maximized)
   useEffect(() => {
@@ -136,12 +149,22 @@ export function Window({ win }: { win: Win }) {
   return (
     <section
       ref={ref}
-      className={cx('shell-window', focused && 'is-focused', zooming && 'is-zooming', win.phase === 'closing' && 'is-closing')}
+      className={cx(
+        'shell-window',
+        focused && 'is-focused',
+        zooming && 'is-zooming',
+        opening && win.phase === 'open' && 'is-opening',
+        win.phase === 'closing' && 'is-closing',
+        win.phase === 'minimizing' && 'is-minimizing',
+      )}
       style={{ left: win.x, top: win.y, width: win.width, height: win.height, zIndex: win.z }}
       role="dialog"
       aria-label={win.title}
       data-window-id={win.id}
       onPointerDown={() => focusWindow(win.id)}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && event.animationName === 'shell-win-in') setOpening(false)
+      }}
     >
       <div className="shell-titlebar" onPointerDown={onTitleDown} onDoubleClick={() => { if (!dragged.current) toggleMaximize(win.id) }}>
         <div className="shell-lights">
@@ -172,7 +195,7 @@ export function Window({ win }: { win: Win }) {
                   fixApp(win.appId, error.stack ? `${error.message}\n${error.stack}` : error.message)
                 }}
               >
-                Fix with {providerLabel(generator.provider)}
+                Fix with {providerLabel(generator.provider) || 'the generator'}
               </Button>
             ) : null}
             <Button size="sm" variant="ghost" onClick={() => clearError(win.id, null)}>
