@@ -26,7 +26,7 @@ export function AboutDialog() {
         <h1 id="slop-about-title">slopOS</h1>
         <p className="version">Version {SLOP_VERSION}</p>
         <p className="line">A calm desktop for small apps.</p>
-        <p className="written">Apps are written by {provider}.</p>
+        <p className="written">{provider ? `Apps are written by ${provider}.` : 'Apps are written the moment you ask.'}</p>
         <div style={{ marginTop: 18 }}>
           <Button variant="primary" onClick={() => close(false)}>
             Done

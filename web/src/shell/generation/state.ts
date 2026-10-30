@@ -27,7 +27,7 @@ type Snapshot = {
 }
 
 const listeners = new Set<() => void>()
-let status: GrokStatus = { available: false, reason: 'Checking…', provider: 'grok' }
+let status: GrokStatus = { available: false, reason: 'Checking…' }
 let jobs: JobInfo[] = []
 let panel: PanelJob | null = null
 let editAppId: string | null = null
@@ -69,10 +69,14 @@ export function refreshStatus(force = false): Promise<void> {
   statusFlight = fetch('/api/health')
     .then((res) => res.json())
     .then((body: { grok?: GrokStatus }) => {
-      if (body.grok) status = { provider: 'grok', ...body.grok }
+      if (body.grok) status = { ...body.grok, reason: body.grok.reason?.replace(/`/g, '') }
       emit()
     })
-    .catch(() => undefined)
+    .catch(() => {
+      if (status.reason !== 'Checking…') return
+      status = { available: false, reason: 'Can’t reach slopOS right now.' }
+      emit()
+    })
     .finally(() => {
       statusFlight = null
     })
@@ -101,7 +105,7 @@ export function closeEdit(): void {
 async function blocked(): Promise<boolean> {
   await ready()
   if (status.available) return false
-  useShell.getState().pushToast(status.reason || `${providerLabel(status.provider)} isn't available`)
+  useShell.getState().pushToast(status.reason || `${providerLabel(status.provider) || 'The generator'} isn't available`)
   return true
 }
 
@@ -226,7 +230,7 @@ export function noteRuntimeError(windowId: string, appId: string, version: numbe
   if (Date.now() - mark.at > 10_000) return
   mark.used = true
   useShell.getState().setWindowError(windowId, null)
-  const name = providerLabel(status.provider)
+  const name = providerLabel(status.provider) || 'The generator'
   useShell.getState().pushToast(`slopOS hit an error in ${appName} — ${name} is fixing it`)
   fixApp(appId, message)
 }
@@ -235,11 +239,13 @@ export function cancelPanel(jobId: string): void {
   void postCancel(jobId).catch(() => undefined)
 }
 
+/** Display name for the provider id reported by /api/health. Empty until that id is known. */
 export function providerLabel(id?: string): string {
   if (id === 'codex') return 'Codex'
   if (id === 'claude') return 'Claude'
   if (id === 'mock') return 'Mock'
-  return 'Grok'
+  if (id === 'grok') return 'Grok'
+  return ''
 }
 
 export function jobActive(job: JobInfo): boolean {

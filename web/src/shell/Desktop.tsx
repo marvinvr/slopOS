@@ -64,7 +64,7 @@ export function Desktop() {
     { type: 'item', label: 'Show All Apps', onSelect: () => useShell.getState().setDrawerOpen(true) },
     {
       type: 'item',
-      label: `New App with ${provider}…`,
+      label: provider ? `New App with ${provider}…` : 'New App…',
       onSelect: () => {
         const shell = useShell.getState()
         shell.setDrawerPrompt(true)

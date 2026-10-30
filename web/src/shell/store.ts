@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid'
 import { create } from 'zustand'
 import type { PersistedScreen, WireMenu } from '../../../runtime/protocol'
-import { MENU_H, workArea } from './metrics'
+import { workArea } from './metrics'
 import { wallpaperId } from './wallpaper/wallpapers'
 import { resolveTheme, type ThemeMode } from '../design/theme'
 import type { AppManifest, Rect, ThemeSetting } from './types'
@@ -65,7 +65,7 @@ type State = {
 }
 
 type Actions = {
-  hydrate: (apps: AppManifest[], settings: SettingsPayload) => void
+  hydrate: (apps: AppManifest[], settings: SettingsPayload, appsLoaded?: boolean) => void
   refreshApps: () => Promise<void>
   openApp: (appId: string) => void
   newWindow: (appId: string) => void
@@ -122,8 +122,9 @@ export const useShell = create<State & Actions>((set, get) => ({
   pulse: null,
   shellPrompt: null,
 
-  hydrate: (apps, settings) => {
-    const windows = (settings.windows ?? [])
+  hydrate: (apps, settings, appsLoaded = false) => {
+    const savedWindows = settings.windows ?? []
+    const windows = savedWindows
       .filter((saved) => apps.some((app) => app.id === saved.appId))
       .map((saved) => {
         const app = apps.find((item) => item.id === saved.appId)!
@@ -142,6 +143,7 @@ export const useShell = create<State & Actions>((set, get) => ({
       zCounter,
       loaded: true,
     })
+    if (appsLoaded && windows.length !== savedWindows.length) scheduleSave()
   },
 
   refreshApps: async () => {
@@ -169,21 +171,17 @@ export const useShell = create<State & Actions>((set, get) => ({
   newWindow: (appId) => {
     const app = get().apps.find((item) => item.id === appId)
     if (!app) return
-    const area = workArea()
-    const offset = (get().windows.length % 8) * 26
-    const width = clamp(app.window.width, app.window.minWidth, area.width)
-    const height = clamp(app.window.height, app.window.minHeight, area.height)
-    const x = clamp(Math.round((window.innerWidth - width) / 2 - 36 + offset), 16, Math.max(16, window.innerWidth - width - 16))
-    const y = Math.max(area.y, area.y + 12 + (offset % 120))
+    const openCount = get().windows.filter((win) => win.phase === 'open' || win.phase === 'minimizing').length
+    const placed = placeWindow(app, openCount)
     const z = get().zCounter + 1
     const win: Win = {
       id: nanoid(10),
       appId,
       title: app.name,
-      x,
-      y: Math.min(y, Math.max(MENU_H, window.innerHeight - 80)),
-      width,
-      height,
+      x: placed.x,
+      y: placed.y,
+      width: placed.width,
+      height: placed.height,
       minWidth: app.window.minWidth,
       minHeight: app.window.minHeight,
       resizable: app.window.resizable,
@@ -194,6 +192,7 @@ export const useShell = create<State & Actions>((set, get) => ({
       version: app.version,
       screens: [],
     }
+    entering.add(win.id)
     bumpPulse(appId)
     set((state) => ({ windows: [...state.windows, win], focusedWindowId: win.id, zCounter: z, drawerOpen: false, spotlightOpen: false }))
     scheduleSave()
@@ -485,9 +484,42 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+/** Prefer the manifest size, never larger than the work area, never smaller than min unless min itself does not fit. */
+function fitSize(preferred: number, min: number, limit: number): number {
+  const cap = Math.max(1, limit)
+  const floor = Math.min(Math.max(1, min), cap)
+  return Math.min(Math.max(preferred, floor), cap)
+}
+
+const CASCADE = 8
+const CASCADE_X = 28
+const CASCADE_Y = 22
+
+function placeWindow(app: AppManifest, openCount: number): { x: number; y: number; width: number; height: number } {
+  const area = workArea()
+  const width = fitSize(app.window.width, app.window.minWidth, area.width)
+  const height = fitSize(app.window.height, app.window.minHeight, area.height)
+  const slot = openCount % CASCADE
+  const maxX = area.x + Math.max(0, area.width - width)
+  const maxY = area.y + Math.max(0, area.height - height)
+  const x = clamp(Math.round(area.x + (area.width - width) / 2 + slot * CASCADE_X), area.x, maxX)
+  const y = clamp(Math.round(area.y + (area.height - height) / 2 + slot * CASCADE_Y), area.y, maxY)
+  return { x, y, width, height }
+}
+
+const entering = new Set<string>()
+
+export function isEntering(id: string): boolean {
+  return entering.has(id)
+}
+
+export function clearEntering(id: string): void {
+  entering.delete(id)
+}
+
 export async function bootShell(): Promise<void> {
   const [appsRes, settingsRes] = await Promise.all([fetch('/api/apps'), fetch('/api/settings')])
   const apps = appsRes.ok ? ((await appsRes.json()) as AppManifest[]) : []
   const settings = settingsRes.ok ? ((await settingsRes.json()) as SettingsPayload) : {}
-  useShell.getState().hydrate(apps, settings)
+  useShell.getState().hydrate(apps, settings, appsRes.ok)
 }

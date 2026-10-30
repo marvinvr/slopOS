@@ -78,7 +78,7 @@ export function EditDialog({ appId }: { appId: string }) {
             Cancel
           </Button>
           <Button variant="primary" disabled={!prompt.trim() || busy} onClick={submit}>
-            Apply with {provider}
+            Apply with {provider || 'the generator'}
           </Button>
         </Row>
         {versions.length ? (

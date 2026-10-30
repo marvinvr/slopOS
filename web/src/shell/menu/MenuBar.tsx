@@ -144,7 +144,7 @@ export function MenuBar() {
 
   const appItems: MenuNode[] = app
     ? [
-        { type: 'item', label: `Edit with ${provider}…`, onSelect: () => openEditApp(app.id) },
+        { type: 'item', label: provider ? `Edit with ${provider}…` : 'Edit…', onSelect: () => openEditApp(app.id) },
         { type: 'item', label: 'Regenerate', onSelect: () => regenerateApp(app.id) },
         { type: 'item', label: 'Version History…', onSelect: () => setShellPrompt({ kind: 'history', appId: app.id }) },
         { type: 'sep' },

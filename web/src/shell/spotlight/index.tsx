@@ -129,7 +129,9 @@ export function Spotlight() {
             ))}
           </div>
         ) : (
-          <p className="shell-spot-empty">Describe an app and {provider} will write it.</p>
+          <p className="shell-spot-empty">
+            {provider ? `Describe an app and ${provider} will write it.` : 'Describe an app and it will be written.'}
+          </p>
         )}
       </div>
     </div>
@@ -181,7 +183,12 @@ function buildRows(
   const matchedWell = appRows.some((row) => row.kind === 'app' && row.good) || actionRows.some((row) => row.kind === 'action' && row.good)
   const showCreate = q.length >= 3 || (q.length > 0 && !matchedWell)
   const create: Row | null = showCreate
-    ? { kind: 'create', title: `Create “${q}” with ${provider}`, disabled: !grokOk, reason: reason || `${provider} isn’t available` }
+    ? {
+        kind: 'create',
+        title: provider ? `Create “${q}” with ${provider}` : `Create “${q}”`,
+        disabled: !grokOk,
+        reason: reason || (provider ? `${provider} isn’t available` : 'The generator isn’t available'),
+      }
     : null
 
   return create ? [...appRows, ...actionRows, create] : [...appRows, ...actionRows]

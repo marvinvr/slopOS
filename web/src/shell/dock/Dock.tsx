@@ -14,7 +14,7 @@ export function Dock() {
 
   const pinned = pins.map((id) => apps.find((app) => app.id === id)).filter((app): app is AppManifest => Boolean(app))
   const running = apps
-    .filter((app) => !pins.includes(app.id) && windows.some((win) => win.appId === app.id && win.phase !== 'closing'))
+    .filter((app) => !pins.includes(app.id) && windows.some((win) => win.appId === app.id))
     .sort((a, b) => minZ(windows, a.id) - minZ(windows, b.id))
   const shown = [...pinned, ...running]
   const menuApp = menu ? apps.find((app) => app.id === menu.appId) : undefined
@@ -44,7 +44,7 @@ export function Dock() {
         <DockApp
           key={app.id}
           app={app}
-          live={windows.some((win) => win.appId === app.id && win.phase !== 'closing')}
+          live={windows.some((win) => win.appId === app.id)}
           menuOpen={menu?.appId === app.id}
           onMenu={(event) => {
             event.preventDefault()
