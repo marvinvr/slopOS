@@ -1,13 +1,24 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { Icon } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
+import { launch, uninstalled, type CatalogApp } from '../catalog'
 import { scoreApp } from '../fuzzy'
-import { openEditApp, providerLabel, regenerateApp, startGeneration, useGrokStatus } from '../generation'
+import { openEditApp, regenerateApp } from '../generation'
 import { AppTile } from '../icons'
 import { pushLayer } from '../layers'
 import { ContextMenu, type MenuNode } from '../menu/MenuList'
 import { useShell } from '../store'
-import { Invite } from '../empty/Invite'
+import type { AppManifest } from '../types'
+
+type Entry = { kind: 'app'; app: AppManifest } | { kind: 'catalog'; entry: CatalogApp }
+
+function entryId(item: Entry): string {
+  return item.kind === 'app' ? item.app.id : item.entry.id
+}
+
+function entryName(item: Entry): string {
+  return item.kind === 'app' ? item.app.name : item.entry.name
+}
 
 export function openDrawer(): void {
   useShell.getState().setDrawerOpen(true)
@@ -18,30 +29,26 @@ export function Drawer() {
   const close = useShell((state) => state.setDrawerOpen)
   const apps = useShell((state) => state.apps)
   const openApp = useShell((state) => state.openApp)
-  const drawerPrompt = useShell((state) => state.drawerPrompt)
-  const setDrawerPrompt = useShell((state) => state.setDrawerPrompt)
   const setShellPrompt = useShell((state) => state.setShellPrompt)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const [byKeyboard, setByKeyboard] = useState(false)
-  const [composing, setComposing] = useState(false)
-  const [draft, setDraft] = useState('')
   const [menu, setMenu] = useState<{ x: number; y: number; appId: string } | null>(null)
-  const provider = providerLabel(useGrokStatus().provider)
   const searchRef = useRef<HTMLInputElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [cols, setCols] = useState(6)
 
   const shown = useMemo(() => {
     const q = query.trim()
-    const ranked = apps
-      .map((app) => ({ app, score: scoreApp(q, app.name, app.description) }))
-      .filter((item) => item.score > 0)
-      .sort((a, b) => (q ? b.score - a.score : a.app.name.localeCompare(b.app.name)))
-    return ranked.map((item) => item.app)
+    const all: Entry[] = [...apps.map((app) => ({ kind: 'app' as const, app })), ...uninstalled(apps).map((entry) => ({ kind: 'catalog' as const, entry }))]
+    return all
+      .map((item) => ({ item, score: item.kind === 'app' ? scoreApp(q, item.app.name, item.app.description) : scoreApp(q, item.entry.name) }))
+      .filter((ranked) => ranked.score > 0)
+      .sort((a, b) => (q ? b.score - a.score : entryName(a.item).localeCompare(entryName(b.item))))
+      .map((ranked) => ranked.item)
   }, [apps, query])
 
-  const count = shown.length + 1
+  const count = Math.max(1, shown.length)
 
   useEffect(() => {
     setActive((current) => Math.min(current, Math.max(0, count - 1)))
@@ -53,17 +60,9 @@ export function Drawer() {
     setActive(0)
     setByKeyboard(false)
     setMenu(null)
-    if (useShell.getState().drawerPrompt) return
     const timer = window.setTimeout(() => searchRef.current?.focus(), 30)
     return () => window.clearTimeout(timer)
   }, [open])
-
-  useEffect(() => {
-    if (!open || !drawerPrompt) return
-    setComposing(true)
-    setDraft('')
-    setDrawerPrompt(false)
-  }, [open, drawerPrompt, setDrawerPrompt])
 
   useEffect(() => {
     if (!open) return
@@ -94,32 +93,13 @@ export function Drawer() {
   }
 
   function activate(index: number) {
-    if (index <= 0) {
-      setComposing(true)
-      setDraft('')
-      return
-    }
-    const app = shown[index - 1]
-    if (!app) return
-    openApp(app.id)
-  }
-
-  function submitDraft() {
-    const prompt = draft.trim()
-    if (!prompt) return
-    startGeneration(prompt)
-    close(false)
+    const item = shown[index]
+    if (!item) return
+    if (item.kind === 'app') openApp(item.app.id)
+    else launch(item.entry.prompt, item.entry.name)
   }
 
   function onKeyDown(event: ReactKeyboardEvent) {
-    if (composing) {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopPropagation()
-        setComposing(false)
-      }
-      return
-    }
     if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey && !(event.target instanceof HTMLInputElement)) {
       event.preventDefault()
       setQuery((current) => current + event.key)
@@ -159,16 +139,19 @@ export function Drawer() {
   }
 
   const menuApp = menu ? apps.find((app) => app.id === menu.appId) : undefined
+  const menuEntry = menu && !menuApp ? shown.find((item) => entryId(item) === menu.appId) : undefined
   const menuItems: MenuNode[] = menuApp
     ? [
         { type: 'item', label: 'Open', onSelect: () => openApp(menuApp.id) },
-        { type: 'item', label: provider ? `Edit with ${provider}…` : 'Edit…', onSelect: () => openEditApp(menuApp.id) },
-        { type: 'item', label: 'Regenerate', onSelect: () => regenerateApp(menuApp.id) },
+        { type: 'item', label: 'Customize…', onSelect: () => openEditApp(menuApp.id) },
+        { type: 'item', label: 'Reinstall', onSelect: () => regenerateApp(menuApp.id) },
         { type: 'item', label: 'Version History…', onSelect: () => setShellPrompt({ kind: 'history', appId: menuApp.id }) },
         { type: 'sep' },
         { type: 'item', label: 'Delete', danger: true, onSelect: () => setShellPrompt({ kind: 'delete', appId: menuApp.id }) },
       ]
-    : []
+    : menuEntry
+      ? [{ type: 'item', label: 'Open', onSelect: () => activate(shown.indexOf(menuEntry)) }]
+      : []
 
   return (
     <div className="shell-backdrop drawer" onPointerDown={() => close(false)}>
@@ -182,67 +165,46 @@ export function Drawer() {
           if (event.target === event.currentTarget) close(false)
         }}
       >
-        {apps.length === 0 ? (
-          <Invite embedded onPick={() => close(false)} />
-        ) : (
-          <h2 className="shell-drawer-title">Apps</h2>
-        )}
+        <h2 className="shell-drawer-title">Apps</h2>
         <label className="shell-drawer-search">
           <Icon name="Search" size={15} />
-          <input ref={searchRef} value={query} placeholder="Search apps" aria-label="Search apps" spellCheck={false} onChange={(event) => setQuery(event.target.value)} />
+          <input ref={searchRef} value={query} placeholder="Search" aria-label="Search apps" spellCheck={false} onChange={(event) => setQuery(event.target.value)} />
         </label>
         <div className="shell-drawer-grid" ref={gridRef}>
-          {composing ? (
-            <form
-              className="shell-drawer-compose"
-              onSubmit={(event) => {
-                event.preventDefault()
-                submitDraft()
-              }}
-            >
-              <input
-                autoFocus
-                value={draft}
-                placeholder="Describe an app…"
-                aria-label="New app"
-                onChange={(event) => setDraft(event.target.value)}
-              />
-            </form>
-          ) : (
-            <button type="button" className={cx('shell-drawer-app', byKeyboard && active === 0 && 'is-kbd')} onClick={() => activate(0)} onMouseEnter={() => { setByKeyboard(false); setActive(0) }}>
-              <span className="shell-tile shell-new-tile">
-                <Icon name="Plus" size={26} />
-              </span>
-              <span>{provider ? `New app with ${provider}…` : 'New app…'}</span>
-            </button>
-          )}
-          {shown.map((app, index) => (
-            <div
-              key={app.id}
-              data-app-id={app.id}
-              className={cx('shell-drawer-app', byKeyboard && active === index + 1 && 'is-kbd')}
-              onMouseEnter={() => {
-                setByKeyboard(false)
-                setActive(index + 1)
-              }}
-              onContextMenu={(event) => openMenu(event, app.id)}
-            >
-              <button type="button" className="shell-drawer-hit" onClick={() => activate(index + 1)}>
-                <AppTile id={app.id} icon={app.icon} tint={app.tint} size={60} />
-                <span>{app.name}</span>
-              </button>
-              <button
-                type="button"
-                className="shell-drawer-more"
-                aria-label={`Actions for ${app.name}`}
-                onClick={(event) => openMenu(event, app.id)}
+          {shown.map((item, index) => {
+            const id = entryId(item)
+            return (
+              <div
+                key={id}
+                data-app-id={id}
+                className={cx('shell-drawer-app', byKeyboard && active === index && 'is-kbd')}
+                onMouseEnter={() => {
+                  setByKeyboard(false)
+                  setActive(index)
+                }}
+                onContextMenu={(event) => openMenu(event, id)}
               >
-                <Icon name="Ellipsis" size={14} />
-              </button>
-            </div>
-          ))}
+                <button type="button" className="shell-drawer-hit" onClick={() => activate(index)}>
+                  {item.kind === 'app' ? (
+                    <AppTile id={item.app.id} icon={item.app.icon} tint={item.app.tint} size={60} />
+                  ) : (
+                    <AppTile id={item.entry.id} icon={item.entry.icon} tint={item.entry.tint} size={60} />
+                  )}
+                  <span>{entryName(item)}</span>
+                </button>
+                <button
+                  type="button"
+                  className="shell-drawer-more"
+                  aria-label={`Actions for ${entryName(item)}`}
+                  onClick={(event) => openMenu(event, id)}
+                >
+                  <Icon name="Ellipsis" size={14} />
+                </button>
+              </div>
+            )
+          })}
         </div>
-        {query.trim() && shown.length === 0 ? <p className="shell-drawer-empty">No apps match.</p> : null}
+        {query.trim() && shown.length === 0 ? <p className="shell-drawer-empty">No Results</p> : null}
       </div>
       {menu && menuItems.length ? <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} /> : null}
     </div>

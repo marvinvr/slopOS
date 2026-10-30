@@ -66,11 +66,8 @@ function ensureListener(): void {
     if (!requestId) return
     const waiter = waiters.get(requestId)
     if (!waiter) return
-    if (msg.type === 'gen.progress') {
-      const text = friendlyProgress(payload.text || '')
-      if (text) waiter.onProgress?.(text)
-      return
-    }
+    // Progress stays on the host. Apps only see a result or an error.
+    if (msg.type === 'gen.progress') return
     if (msg.type === 'gen.result' && payload.result) {
       finish(requestId)
       waiter.resolve(payload.result)
@@ -78,19 +75,9 @@ function ensureListener(): void {
     }
     if (msg.type === 'gen.error') {
       finish(requestId)
-      waiter.reject(new Error(payload.error || 'Generation failed'))
+      waiter.reject(new Error(payload.error || 'Couldn’t load'))
     }
   })
-}
-
-/** A line an app can show. Raw job states never leave the SDK. */
-export function friendlyProgress(text: string): string | null {
-  const line = text.replace(/\s+/g, ' ').trim()
-  if (!line || line.startsWith('{') || line.startsWith('[')) return null
-  if (line === 'Queued') return 'Getting ready…'
-  if (line === 'Thinking') return 'Thinking…'
-  if (line === 'Compiling' || line === 'Fixing the response' || /^Fixing compile error\b/i.test(line)) return 'Putting it together…'
-  return line.length > 96 ? `${line.slice(0, 95).trim()}…` : line
 }
 
 function finish(requestId: string): void {
@@ -111,7 +98,7 @@ export function requestGeneration<T>(
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => {
       waiters.delete(requestId)
-      reject(new Error('Generation timed out'))
+      reject(new Error('Couldn’t load'))
     }, 7 * 60 * 1000)
     waiters.set(requestId, {
       onProgress,

@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { toggleFullscreen } from './fullscreen'
 import { dismissAll, dismissOne } from './layers'
-import { welcomeSeen } from './local'
 import { useShell } from './store'
 
 // Global shortcuts live here. The runtime forwards the same chords from inside
@@ -100,8 +99,6 @@ function closeTopFromEscape(): boolean {
 }
 
 export function runShortcut(event: ShortcutEvent): void {
-  if (!welcomeSeen()) return
-
   if (isCycleChord(event)) {
     if (!fresh(`cycle|${event.ctrlKey ? 'ctrl' : 'meta'}`, event.repeat ? 16 : 40)) return
     const shell = useShell.getState()
@@ -172,7 +169,6 @@ export function runShortcut(event: ShortcutEvent): void {
 export function useShellShortcuts(): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!welcomeSeen()) return
       if (event.key === 'Escape') {
         if (event.repeat) return
         if (useShell.getState().switcher) {

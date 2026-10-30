@@ -37,8 +37,8 @@ export async function routeGenMessage(win: Win, message: SlopMessage, post: Post
     }
     post({ type: 'gen.result', payload: { requestId, result } })
   } catch (err) {
-    const error = err instanceof Error ? err.message : 'Generation failed'
-    post({ type: 'gen.error', payload: { requestId, error } })
+    if (err instanceof Error) console.warn(err.message)
+    post({ type: 'gen.error', payload: { requestId, error: 'Couldn’t load' } })
   }
   return true
 }

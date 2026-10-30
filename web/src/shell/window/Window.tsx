@@ -3,11 +3,12 @@ import { SLOP_PROTOCOL } from '../../../../runtime/protocol'
 import { Button } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { useWindowBridge } from '../bridge/useWindowBridge'
-import { beginWindowFix, fixApp, providerLabel, useGeneration } from '../generation'
+import { dropBuild, fixApp, useGeneration } from '../generation'
 import { AppTile } from '../icons'
 import { MENU_H } from '../metrics'
 import { previewAt } from '../snap'
-import { clearEntering, isEntering, useShell, type Win } from '../store'
+import { clearEntering, isEntering, isPending, useShell, type Win } from '../store'
+import { WindowSkeleton } from './Skeleton'
 
 const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 
@@ -30,19 +31,24 @@ export function Window({ win }: { win: Win }) {
   const setGeometry = useShell((state) => state.setGeometry)
   const setInteracting = useShell((state) => state.setInteracting)
   const clearError = useShell((state) => state.setWindowError)
-  const generation = useGeneration()
-  const generator = generation.status
-  const fixing = generation.fixing?.windowId === win.id ? generation.fixing : null
+  const build = useGeneration().builds.find((item) => item.windowId === win.id)
+  const pending = isPending(win.appId)
+  const building = pending ? !build?.failed : Boolean(build && !build.failed)
+  const failed = build?.failed ? build : undefined
   useWindowBridge(win, iframeRef)
   const src = `/runtime/frame.html?app=${encodeURIComponent(win.appId)}&v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}`
   const [bootSrc, setBootSrc] = useState(src)
   const [boot, setBoot] = useState<'in' | 'out' | 'off'>('in')
+  // Once a window has shown the placeholder, it stays up until the app paints, so the swap is one fade.
+  const [placeheld, setPlaceheld] = useState(pending)
   if (bootSrc !== src) {
     setBootSrc(src)
     setBoot('in')
-  } else if ((error || fixing) && boot !== 'off') {
+  } else if (error && !building && boot !== 'off') {
     setBoot('off')
   }
+  if (building && !placeheld) setPlaceheld(true)
+  else if (placeheld && !building && boot === 'off') setPlaceheld(false)
 
   useEffect(() => {
     if (!opening) return
@@ -253,9 +259,10 @@ export function Window({ win }: { win: Win }) {
     window.addEventListener('pointerup', up)
   }
 
-  const provider = providerLabel(generator.provider) || 'the generator'
   const appName = app?.name || win.title
-  const showBoot = boot !== 'off' && !fixing && !error
+  const covered = building || Boolean(failed)
+  const showBoot = !covered && boot !== 'off' && !error
+  const crash = error ? (error.stack ? `${error.message}\n${error.stack}` : error.message) : ''
 
   return (
     <section
@@ -288,57 +295,63 @@ export function Window({ win }: { win: Win }) {
         <div className="shell-title">{win.title}</div>
       </div>
       <div className="shell-window-body">
-        <iframe
-          ref={iframeRef}
-          title={win.title}
-          src={src}
-          data-win={win.id}
-          sandbox="allow-scripts allow-forms allow-modals allow-popups"
-          referrerPolicy="no-referrer"
-          aria-hidden={fixing || error || showBoot ? true : undefined}
-        />
+        {pending ? null : (
+          <iframe
+            ref={iframeRef}
+            title={win.title}
+            src={src}
+            data-win={win.id}
+            sandbox="allow-scripts allow-forms allow-modals allow-popups"
+            referrerPolicy="no-referrer"
+            aria-hidden={covered || error || showBoot ? true : undefined}
+          />
+        )}
+        {building ? <WindowSkeleton label={win.title} /> : null}
         {showBoot ? (
-          <div className={cx('shell-window-boot', boot === 'out' && 'is-leaving')} aria-hidden>
-            <AppTile id={win.appId} icon={app?.icon || ''} tint={app?.tint} size={46} />
-          </div>
+          placeheld ? (
+            <WindowSkeleton label={win.title} leaving={boot === 'out'} />
+          ) : (
+            <div className={cx('shell-window-boot', boot === 'out' && 'is-leaving')} aria-hidden>
+              <AppTile id={win.appId} icon={app?.icon || ''} tint={app?.tint} size={46} />
+            </div>
+          )
         ) : null}
         {!focused ? <div className="shell-window-shield" /> : null}
-        {fixing ? (
-          <div className="shell-window-state" role="status" aria-live="polite">
-            <div className="shell-window-card">
-              <p className="shell-window-lead">slopOS hit a snag in {fixing.appName} — {provider} is fixing it</p>
-              <p className="shell-window-status">
-                <span className="shell-window-status-dot" aria-hidden />
-                <span>{fixing.status}</span>
-              </p>
-            </div>
-          </div>
-        ) : error ? (
+        {failed ? (
           <div className="shell-window-state" role="alert">
             <div className="shell-window-card">
-              <p className="shell-window-lead">{error.message}</p>
-              {error.stack ? (
-                <details className="shell-window-stack">
-                  <summary>Stack</summary>
-                  <pre>{error.stack}</pre>
-                </details>
-              ) : null}
+              {app ? <AppTile id={app.id} icon={app.icon} tint={app.tint} size={52} /> : <AppTile id={win.appId} icon="AppWindow" tint="#7a756f" size={52} />}
+              <p className="shell-window-lead">
+                {pending ? `“${win.title}” can’t be opened right now.` : failed.kind === 'fix' ? `${appName} couldn’t be reopened.` : `${appName} couldn’t be updated.`}
+              </p>
               <div className="shell-window-actions">
+                <Button size="sm" variant="ghost" onClick={() => (pending ? closeWindow(win.id) : dropBuild(win.id))}>
+                  {pending ? 'Close' : 'Cancel'}
+                </Button>
+                <Button size="sm" variant="primary" onClick={failed.retry}>
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : error && !building ? (
+          <div className="shell-window-state" role="alert">
+            <div className="shell-window-card">
+              {app ? <AppTile id={app.id} icon={app.icon} tint={app.tint} size={52} /> : null}
+              <p className="shell-window-lead">{appName} quit unexpectedly.</p>
+              <details className="shell-window-stack">
+                <summary>Details</summary>
+                <pre>{crash}</pre>
+              </details>
+              <div className="shell-window-actions">
+                <Button size="sm" variant="ghost" onClick={() => clearError(win.id, null)}>
+                  Ignore
+                </Button>
                 {!app?.fixture ? (
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={() => {
-                      beginWindowFix(win.id, win.appId, appName)
-                      fixApp(win.appId, error.stack ? `${error.message}\n${error.stack}` : error.message)
-                    }}
-                  >
-                    Fix with {provider}
+                  <Button size="sm" variant="primary" onClick={() => fixApp(win.appId, crash, win.id)}>
+                    Reopen
                   </Button>
                 ) : null}
-                <Button size="sm" variant="ghost" onClick={() => clearError(win.id, null)}>
-                  Dismiss
-                </Button>
               </div>
             </div>
           </div>

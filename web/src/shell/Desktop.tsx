@@ -1,13 +1,12 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import { applyTheme, resolveTheme } from '../design/theme'
 import { cycleWallpaper, toggleDarkMode } from './actions'
-import { providerLabel, useGrokStatus } from './generation'
+import { GenerationActivity } from './generation'
 import { Dock } from './dock/Dock'
 import { ShellDialogs } from './dialogs/Dialogs'
 import { AboutDialog } from './menu/AboutDialog'
 import { ShortcutsDialog } from './menu/ShortcutsDialog'
 import { Drawer } from './drawer'
-import { Invite } from './empty/Invite'
 import { MenuBar } from './menu/MenuBar'
 import { ContextMenu, type MenuNode } from './menu/MenuList'
 import { useShellShortcuts } from './shortcuts'
@@ -15,14 +14,10 @@ import { Spotlight } from './spotlight'
 import { bootShell, useShell } from './store'
 import { Toasts } from './toasts/Toasts'
 import { Wallpaper } from './wallpaper/Wallpaper'
-import { Welcome } from './welcome/Welcome'
 import { Switcher } from './window/Switcher'
 import { WindowManager } from './window/WindowManager'
 
 export function Desktop() {
-  const loaded = useShell((state) => state.loaded)
-  const provider = providerLabel(useGrokStatus().provider)
-  const apps = useShell((state) => state.apps)
   const interacting = useShell((state) => state.interacting)
   const drawerOpen = useShell((state) => state.drawerOpen)
   const theme = useShell((state) => state.theme)
@@ -56,7 +51,7 @@ export function Desktop() {
 
   function onContextMenu(event: MouseEvent) {
     const target = event.target as HTMLElement
-    if (target.closest('.shell-window, .shell-dock, .shell-menubar, .shell-backdrop, .shell-about, .shell-toast, .shell-menu-pop, .shell-welcome, .shell-confirm, .shell-confirm-backdrop, .shell-switcher, .shell-switcher-layer')) {
+    if (target.closest('.shell-window, .shell-dock, .shell-menubar, .shell-backdrop, .shell-about, .shell-toast, .shell-menu-pop, .shell-confirm, .shell-confirm-backdrop, .shell-switcher, .shell-switcher-layer')) {
       return
     }
     event.preventDefault()
@@ -65,15 +60,6 @@ export function Desktop() {
 
   const items: MenuNode[] = [
     { type: 'item', label: 'Show All Apps', onSelect: () => useShell.getState().setDrawerOpen(true) },
-    {
-      type: 'item',
-      label: provider ? `New App with ${provider}…` : 'New App…',
-      onSelect: () => {
-        const shell = useShell.getState()
-        shell.setDrawerPrompt(true)
-        shell.setDrawerOpen(true)
-      },
-    },
     { type: 'item', label: 'Change Wallpaper', onSelect: cycleWallpaper },
     { type: 'item', label: 'Toggle Dark Mode', onSelect: toggleDarkMode },
   ]
@@ -81,7 +67,6 @@ export function Desktop() {
   return (
     <div className={['shell-desktop', interacting && 'is-interacting', drawerOpen && 'is-drawer'].filter(Boolean).join(' ')} onContextMenu={onContextMenu}>
       <Wallpaper />
-      {loaded && apps.length === 0 ? <Invite /> : null}
       <WindowManager />
       <Switcher />
       <MenuBar />
@@ -92,7 +77,7 @@ export function Desktop() {
       <AboutDialog />
       <ShortcutsDialog />
       <ShellDialogs />
-      <Welcome />
+      <GenerationActivity />
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={items} onClose={() => setMenu(null)} /> : null}
     </div>
   )

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Icon } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
-import { toggleDarkMode } from '../actions'
+import { cycleWallpaper, toggleDarkMode } from '../actions'
+import { launch, uninstalled, type CatalogApp } from '../catalog'
+import { toggleFullscreen } from '../fullscreen'
 import { GOOD_MATCH, scoreApp, scoreText } from '../fuzzy'
-import { providerLabel, startGeneration, useGrokStatus } from '../generation'
+import { titleFor } from '../generation'
 import { AppTile } from '../icons'
 import { pushLayer } from '../layers'
 import { useShell } from '../store'
@@ -15,8 +17,9 @@ type Row =
   | { kind: 'app'; id: string; title: string; subtitle?: string; good: boolean; app: AppManifest }
   | { kind: 'place'; id: string; title: string; subtitle?: string; good: boolean; appId: string; view: WorldView }
   | { kind: 'thing'; id: string; title: string; subtitle?: string; good: boolean; entity: WorldEntity; owned: boolean }
+  | { kind: 'catalog'; id: string; title: string; good: boolean; entry: CatalogApp }
   | { kind: 'action'; id: string; title: string; good: boolean; run: () => void }
-  | { kind: 'create'; title: string; disabled: boolean; reason?: string }
+  | { kind: 'create'; id: string; title: string; prompt: string }
 
 export function Spotlight() {
   const open = useShell((state) => state.spotlightOpen)
@@ -25,16 +28,14 @@ export function Spotlight() {
   const openApp = useShell((state) => state.openApp)
   const setDrawerOpen = useShell((state) => state.setDrawerOpen)
   const closeAllWindows = useShell((state) => state.closeAllWindows)
-  const grok = useGrokStatus()
-  const provider = providerLabel(grok.provider)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const [world, setWorld] = useState<WorldIndex>({ views: [], entities: [] })
   const inputRef = useRef<HTMLInputElement>(null)
 
   const rows = useMemo(
-    () => buildRows(apps, world, query, grok.available, grok.reason, provider, { setDrawerOpen, closeAllWindows }),
-    [apps, world, query, grok.available, grok.reason, provider, setDrawerOpen, closeAllWindows],
+    () => buildRows(apps, world, query, { setDrawerOpen, closeAllWindows }),
+    [apps, world, query, setDrawerOpen, closeAllWindows],
   )
 
   useEffect(() => {
@@ -86,8 +87,12 @@ export function Spotlight() {
       close(false)
       return
     }
-    if (row.disabled) return
-    startGeneration(query.trim())
+    if (row.kind === 'catalog') {
+      launch(row.entry.prompt, row.entry.name)
+      close(false)
+      return
+    }
+    launch(row.prompt, row.title)
     close(false)
   }
 
@@ -112,7 +117,7 @@ export function Spotlight() {
           <input
             ref={inputRef}
             value={query}
-            placeholder="Search the world, or describe an app"
+            placeholder="Spotlight Search"
             aria-label="Search"
             spellCheck={false}
             autoComplete="off"
@@ -128,22 +133,25 @@ export function Spotlight() {
                 </div>
               ) : (
                 <button
-                  key={row.kind === 'create' ? 'create' : row.id}
+                  key={row.id}
                   type="button"
                   role="option"
                   aria-selected={index === active}
-                  aria-disabled={row.kind === 'create' && row.disabled}
                   data-app-id={row.kind === 'app' ? row.app.id : row.kind === 'place' ? row.appId : undefined}
                   data-view-id={row.kind === 'place' ? row.view.viewId : undefined}
                   data-entity={row.kind === 'thing' ? row.entity.name : undefined}
-                  className={cx('shell-spot-row', index === active && 'is-active', row.kind === 'create' && row.disabled && 'is-disabled')}
+                  className={cx('shell-spot-row', index === active && 'is-active')}
                   onMouseEnter={() => setActive(index)}
                   onClick={() => activate(index)}
                 >
                   {row.kind === 'app' ? (
                     <AppTile id={row.app.id} icon={row.app.icon} tint={row.app.tint} size={32} />
+                  ) : row.kind === 'catalog' ? (
+                    <AppTile id={row.entry.id} icon={row.entry.icon} tint={row.entry.tint} size={32} />
+                  ) : row.kind === 'create' ? (
+                    <AppTile id={row.id} icon="AppWindow" size={32} />
                   ) : (
-                    <span className={cx('shell-spot-glyph', row.kind === 'create' && 'is-create')}>
+                    <span className="shell-spot-glyph">
                       <Icon name={glyphFor(row.kind)} size={16} />
                     </span>
                   )}
@@ -156,28 +164,27 @@ export function Spotlight() {
               ),
             )}
           </div>
-        ) : (
-          <p className="shell-spot-empty">
-            {provider ? `Describe an app and ${provider} will write it.` : 'Describe an app and it will be written.'}
-          </p>
-        )}
+        ) : null}
       </div>
     </div>
   )
 }
 
 function glyphFor(kind: Row['kind']): string {
-  if (kind === 'place') return 'Map'
-  if (kind === 'thing') return 'Box'
-  if (kind === 'create') return 'Sparkles'
+  if (kind === 'place') return 'PanelsTopLeft'
+  if (kind === 'thing') return 'FileText'
   return 'Command'
 }
 
 function hintFor(row: Row): string {
-  if (row.kind === 'app' || row.kind === 'place') return 'Open'
-  if (row.kind === 'thing') return row.owned ? 'Open' : 'Ask'
-  if (row.kind === 'create' && row.disabled) return row.reason || ''
-  return ''
+  if (row.kind === 'action' || row.kind === 'group') return ''
+  return 'Open'
+}
+
+function kindLabel(kind: string | undefined): string | undefined {
+  const word = kind?.trim()
+  if (!word || word.toLowerCase() === 'other') return undefined
+  return word.charAt(0).toUpperCase() + word.slice(1)
 }
 
 function stepRow(rows: Row[], current: number, delta: number): number {
@@ -194,9 +201,6 @@ function buildRows(
   apps: AppManifest[],
   world: WorldIndex,
   query: string,
-  grokOk: boolean,
-  reason: string | undefined,
-  provider: string,
   actions: { setDrawerOpen: (open: boolean) => void; closeAllWindows: () => void },
 ): Row[] {
   const q = query.trim()
@@ -209,10 +213,17 @@ function buildRows(
     kind: 'app',
     id: item.app.id,
     title: item.app.name,
-    subtitle: item.app.description,
     good: !q || item.score >= GOOD_MATCH,
     app: item.app,
   }))
+  const catalogRows: Row[] = uninstalled(apps)
+    .map((entry) => ({ entry, score: q ? scoreText(q, entry.name) : 1 }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((item) => ({ kind: 'catalog' as const, id: item.entry.id, title: item.entry.name, good: !q || item.score >= GOOD_MATCH, entry: item.entry }))
+
+  // An empty field shows a handful of apps, like recents.
+  if (!q) return [...appRows, ...catalogRows].slice(0, 6)
 
   const placeRows: Row[] = q
     ? world.views
@@ -227,8 +238,8 @@ function buildRows(
         .map((item) => ({
           kind: 'place' as const,
           id: `${item.view.appId}:${item.view.viewId}`,
-          title: `${item.title} — in ${item.appName}`,
-          subtitle: item.view.intent !== item.title ? item.view.intent : undefined,
+          title: item.title,
+          subtitle: item.appName,
           good: item.score >= GOOD_MATCH,
           appId: item.view.appId,
           view: item.view,
@@ -247,7 +258,7 @@ function buildRows(
           kind: 'thing' as const,
           id: `entity:${item.entity.appId || ''}:${item.entity.name}`,
           title: item.entity.name,
-          subtitle: item.entity.description || item.entity.kind || undefined,
+          subtitle: kindLabel(item.entity.kind),
           good: item.score >= GOOD_MATCH,
           entity: item.entity,
           owned: Boolean(item.entity.appId && names.has(item.entity.appId)),
@@ -255,9 +266,11 @@ function buildRows(
     : []
 
   const actionDefs = [
-    { id: 'dark', title: 'Toggle dark mode', run: toggleDarkMode },
-    { id: 'apps', title: 'Show all apps', run: () => actions.setDrawerOpen(true) },
-    { id: 'close', title: 'Close all windows', run: () => actions.closeAllWindows() },
+    { id: 'dark', title: 'Toggle Dark Mode', run: toggleDarkMode },
+    { id: 'apps', title: 'Show All Apps', run: () => actions.setDrawerOpen(true) },
+    { id: 'wallpaper', title: 'Change Wallpaper', run: cycleWallpaper },
+    { id: 'fullscreen', title: 'Toggle Full Screen', run: () => void toggleFullscreen() },
+    { id: 'close', title: 'Close All Windows', run: () => actions.closeAllWindows() },
   ]
   const actionRows: Row[] = q
     ? actionDefs
@@ -273,25 +286,19 @@ function buildRows(
         }))
     : []
 
-  const matchedWell = [...appRows, ...placeRows, ...thingRows, ...actionRows].some((row) => 'good' in row && row.good)
-  const showCreate = q.length >= 3 || (q.length > 0 && !matchedWell)
-  const [appsTaken, placesTaken, thingsTaken, actionsTaken] = fill([appRows, placeRows, thingRows, actionRows], showCreate ? 7 : 8)
-  const body = [
-    ...grouped('Apps', appsTaken),
+  const installed = [...appRows, ...catalogRows]
+  const matchedWell = [...installed, ...placeRows, ...thingRows, ...actionRows].some((row) => 'good' in row && row.good)
+  const exact = installed.some((row) => row.title.toLowerCase() === q.toLowerCase())
+  const showCreate = !exact && (q.length >= 3 || !matchedWell)
+  const [appsTaken, placesTaken, thingsTaken, actionsTaken] = fill([installed, placeRows, thingRows, actionRows], showCreate ? 7 : 8)
+  const title = titleFor(q)
+  const create: Row[] = showCreate ? [{ kind: 'create', id: `create:${title}`, title, prompt: q }] : []
+  return [
+    ...grouped('Applications', [...appsTaken, ...create]),
     ...grouped('Places', placesTaken),
-    ...grouped('Things', thingsTaken),
-    ...actionsTaken,
+    ...grouped('Documents', thingsTaken),
+    ...grouped('Actions', actionsTaken),
   ]
-  const create: Row | null = showCreate
-    ? {
-        kind: 'create',
-        title: provider ? `Create “${q}” with ${provider}` : `Create “${q}”`,
-        disabled: !grokOk,
-        reason: reason || (provider ? `${provider} isn’t available` : 'The generator isn’t available'),
-      }
-    : null
-
-  return create ? [...body, create] : body
 }
 
 function grouped(title: string, rows: Row[]): Row[] {
@@ -319,7 +326,7 @@ function fill(sources: Row[][], max: number): Row[][] {
 }
 
 function preferredIndex(rows: Row[]): number {
-  const good = rows.findIndex((row) => row.kind !== 'group' && row.kind !== 'create' && 'good' in row && row.good)
+  const good = rows.findIndex((row) => row.kind !== 'group' && 'good' in row && row.good)
   if (good >= 0) return good
   const create = rows.findIndex((row) => row.kind === 'create')
   if (create >= 0) return create

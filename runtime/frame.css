@@ -100,18 +100,6 @@ body {
   position: relative;
 }
 
-.slop-screen-note {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 8px 16px;
-  font-size: var(--slop-text-xs);
-  color: var(--slop-fg-muted);
-  background: color-mix(in srgb, var(--slop-bg) 88%, transparent);
-  border-top: 1px solid var(--slop-border);
-}
-
 .slop-material,
 .slop-gen-error {
   padding: 28px 28px 22px;
@@ -136,37 +124,6 @@ body {
   font-weight: 520;
   letter-spacing: -0.02em;
   color: var(--slop-fg);
-}
-
-.slop-material-status {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: min(460px, 100%);
-  font-size: var(--slop-text-sm);
-  color: var(--slop-fg-muted);
-}
-
-.slop-material-status span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.slop-material-dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 99px;
-  background: var(--slop-accent);
-  animation: slop-dot 1.6s ease-in-out infinite;
-}
-
-@keyframes slop-dot {
-  0%, 100% { opacity: 0.35; transform: scale(0.85); }
-  50% { opacity: 1; transform: none; }
 }
 
 .slop-skeleton {
@@ -234,7 +191,6 @@ body {
   .slop-skeleton-heading,
   .slop-skeleton-line,
   .slop-skeleton-row,
-  .slop-material-dot,
   .slop-screen.is-loading .slop-screen-bar::after {
     animation: none;
   }

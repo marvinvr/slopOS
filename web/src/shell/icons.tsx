@@ -1,7 +1,7 @@
 import { Icon } from '../design/kit'
 import { tintFor } from './tint'
 
-/** A small drip-shaped mark. One path, used in the menu bar, welcome, and About. */
+/** A small drip-shaped mark. One path, used in the menu bar and About. */
 export function Mark({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>

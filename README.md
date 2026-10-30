@@ -47,7 +47,7 @@ cp .env.example .env      # optional: pick a provider, model, effort, port
 npm start                 # builds, then serves on http://0.0.0.0:4747
 ```
 
-Open http://localhost:4747, choose **Enter slopOS** for full screen, press **Ctrl+Space** and describe an app.
+Open http://localhost:4747, press **Ctrl+Space** and type the name of any app, installed or not. Full screen is in the logo menu (**Ctrl+Shift+F**).
 
 **No API keys, ever.** slopOS only drives the local CLI you're already logged into. It never calls a vendor HTTP API, and it strips `XAI_API_KEY`, `GROK_API_KEY`, `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` from the generator's environment so nothing silently bills an API account. If the CLI is missing or signed out, slopOS still runs and tells you how to fix it.
 

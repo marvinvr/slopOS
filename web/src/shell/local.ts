@@ -1,21 +1,3 @@
-const WELCOME_KEY = 'slopos-welcome'
-
-export function welcomeSeen(): boolean {
-  try {
-    return localStorage.getItem(WELCOME_KEY) === '1'
-  } catch {
-    return true
-  }
-}
-
-export function markWelcome(): void {
-  try {
-    localStorage.setItem(WELCOME_KEY, '1')
-  } catch {
-    /* private mode */
-  }
-}
-
 /** Drop shell keys so a reset reloads into the pristine first run. */
 export function clearSlopLocalStorage(): void {
   try {

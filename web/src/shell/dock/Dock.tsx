@@ -2,14 +2,16 @@ import { useEffect, useState, type MouseEvent } from 'react'
 import { cx } from '../../design/kit/cx'
 import { AppTile, DrawerGlyph } from '../icons'
 import { openDrawer } from '../drawer'
+import { useGeneration } from '../generation'
 import { ContextMenu, type MenuNode } from '../menu/MenuList'
-import { useShell } from '../store'
+import { isPending, useShell, type Win } from '../store'
 import type { AppManifest } from '../types'
 
 export function Dock() {
   const apps = useShell((state) => state.apps)
   const windows = useShell((state) => state.windows)
   const pins = useShell((state) => state.dockPins)
+  const builds = useGeneration().builds
   const [menu, setMenu] = useState<{ x: number; y: number; appId: string } | null>(null)
 
   const pinned = pins.map((id) => apps.find((app) => app.id === id)).filter((app): app is AppManifest => Boolean(app))
@@ -17,6 +19,8 @@ export function Dock() {
     .filter((app) => !pins.includes(app.id) && windows.some((win) => win.appId === app.id))
     .sort((a, b) => minZ(windows, a.id) - minZ(windows, b.id))
   const shown = [...pinned, ...running]
+  const opening = windows.filter((win) => isPending(win.appId) && win.phase !== 'closing')
+  const launching = new Set(builds.filter((build) => !build.failed).map((build) => build.windowId))
   const menuApp = menu ? apps.find((app) => app.id === menu.appId) : undefined
 
   const items: MenuNode[] = menuApp
@@ -48,6 +52,7 @@ export function Dock() {
             key={app.id}
             app={app}
             live={windows.some((win) => win.appId === app.id)}
+            launching={alive.some((win) => launching.has(win.id))}
             minimized={minimized}
             menuOpen={menu?.appId === app.id}
             onMenu={(event) => {
@@ -59,7 +64,10 @@ export function Dock() {
           />
         )
       })}
-      {shown.length > 0 ? <div className="shell-dock-sep" /> : null}
+      {opening.map((win) => (
+        <DockOpening key={win.id} win={win} launching={launching.has(win.id)} />
+      ))}
+      {shown.length > 0 || opening.length > 0 ? <div className="shell-dock-sep" /> : null}
       <button type="button" className="shell-dock-btn" aria-label="Apps" onClick={() => openDrawer()}>
         <span className="shell-dock-tip">Apps</span>
         <span className="shell-drawer-glyph">
@@ -71,15 +79,35 @@ export function Dock() {
   )
 }
 
+/** A window whose app is still on its way in. */
+function DockOpening({ win, launching }: { win: Win; launching: boolean }) {
+  return (
+    <button
+      type="button"
+      className={cx('shell-dock-app', launching && 'is-launching')}
+      data-dock-app={win.appId}
+      data-minimized={win.phase === 'minimized' ? 'true' : undefined}
+      aria-label={win.title}
+      onClick={() => useShell.getState().focusWindow(win.id)}
+    >
+      <span className="shell-dock-tip">{win.title}</span>
+      <AppTile id={win.appId} icon="AppWindow" tint="#7a756f" />
+      <span className={cx('shell-dock-dot', win.phase === 'minimized' && 'is-hollow')} />
+    </button>
+  )
+}
+
 function DockApp({
   app,
   live,
+  launching,
   minimized,
   menuOpen,
   onMenu,
 }: {
   app: AppManifest
   live: boolean
+  launching: boolean
   minimized: boolean
   menuOpen: boolean
   onMenu: (event: MouseEvent) => void
@@ -102,7 +130,7 @@ function DockApp({
   return (
     <button
       type="button"
-      className={cx('shell-dock-app', menuOpen && 'is-menu')}
+      className={cx('shell-dock-app', menuOpen && 'is-menu', launching && 'is-launching')}
       data-app-id={app.id}
       data-dock-app={app.id}
       data-minimized={minimized ? 'true' : undefined}

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
-import { useShell } from '../store'
+import { openPlace } from '../spotlight/world'
+import { isPending, useShell } from '../store'
 import { fetchJobs, postAuto, postCancel, postEdit, postFix, postRegenerate, postRevert, type GenResult, type JobInfo } from './api'
 
 export type GrokStatus = {
@@ -11,45 +12,38 @@ export type GrokStatus = {
   provider?: string
 }
 
-export type PanelJob = {
-  jobId: string
-  prompt: string
-  kind: string
-  appId?: string
-  retry: () => void
-}
-
-export type WindowFix = {
+/** A job bound to a window. The window shows a placeholder until it lands. */
+export type Build = {
   windowId: string
-  appId: string
-  appName: string
+  kind: 'create' | 'edit' | 'regenerate' | 'fix'
   jobId?: string
-  status: string
+  appId?: string
+  prompt?: string
+  failed?: boolean
+  retry: () => void
 }
 
 type Snapshot = {
   status: GrokStatus
   jobs: JobInfo[]
-  panel: PanelJob | null
+  builds: Build[]
   editAppId: string | null
-  fixing: WindowFix | null
 }
 
 const listeners = new Set<() => void>()
 let status: GrokStatus = { available: false, reason: 'Checking…' }
 let jobs: JobInfo[] = []
-let panel: PanelJob | null = null
+let builds: Build[] = []
 let editAppId: string | null = null
-let fixing: WindowFix | null = null
 let statusAt = 0
 let statusFlight: Promise<void> | null = null
 // useSyncExternalStore bails the tree if getSnapshot returns a new object every call.
-let snap: Snapshot = { status, jobs, panel, editAppId, fixing }
+let snap: Snapshot = { status, jobs, builds, editAppId }
 
 const fresh = new Map<string, { at: number; version: number; used: boolean }>()
 
 function emit(): void {
-  snap = { status, jobs, panel, editAppId, fixing }
+  snap = { status, jobs, builds, editAppId }
   for (const listener of listeners) listener()
 }
 
@@ -102,55 +96,104 @@ export async function refreshJobs(): Promise<void> {
   emit()
 }
 
-export function closePanel(): void {
-  panel = null
-  emit()
-}
-
 export function closeEdit(): void {
   editAppId = null
   emit()
 }
 
-async function blocked(): Promise<boolean> {
-  await ready()
-  if (status.available) return false
-  useShell.getState().pushToast(status.reason || `${providerLabel(status.provider) || 'The generator'} isn't available`)
-  return true
+export function buildFor(windowId: string): Build | undefined {
+  return builds.find((build) => build.windowId === windowId)
 }
 
-function openPanel(next: PanelJob): void {
-  panel = next
+function putBuild(build: Build): void {
+  builds = [...builds.filter((item) => item.windowId !== build.windowId), build]
   emit()
-  void refreshJobs()
 }
 
-export function startGeneration(prompt: string): void {
-  const text = prompt.trim()
-  if (!text) return
+function patchBuild(windowId: string, patch: Partial<Build>): void {
+  builds = builds.map((build) => (build.windowId === windowId ? { ...build, ...patch } : build))
+  emit()
+}
+
+export function dropBuild(windowId: string): void {
+  if (!buildFor(windowId)) return
+  builds = builds.filter((build) => build.windowId !== windowId)
+  emit()
+}
+
+export function failBuild(windowId: string): void {
+  patchBuild(windowId, { failed: true, jobId: undefined })
+}
+
+/** Run a job for this window. Failures stay in the window; nothing is announced. */
+function runBuild(build: Build, start: () => Promise<{ jobId?: string; cached?: boolean; result?: GenResult }>): void {
+  putBuild(build)
   void (async () => {
-    if (await blocked()) return
+    await ready()
+    if (!status.available) {
+      failBuild(build.windowId)
+      return
+    }
     try {
-      const body = await postAuto(text)
-      if (body.cached && body.result?.kind === 'app') {
-        await useShell.getState().refreshApps()
-        useShell.getState().openApp(body.result.appId)
+      const body = await start()
+      if (!buildFor(build.windowId)) {
+        if (body.jobId && build.kind === 'create') void postCancel(body.jobId).catch(() => undefined)
         return
       }
-      if (!body.jobId) throw new Error('Generation returned nothing')
-      openPanel({ jobId: body.jobId, prompt: text, kind: 'create', retry: () => startGeneration(text) })
-    } catch (err) {
-      useShell.getState().pushToast('Could not start generation', err instanceof Error ? err.message : 'failed')
+      if (body.result && !body.jobId) {
+        await finishBuild(build.windowId, body.result)
+        return
+      }
+      if (!body.jobId) throw new Error('No job')
+      patchBuild(build.windowId, { jobId: body.jobId })
+      void refreshJobs()
+    } catch {
+      failBuild(build.windowId)
     }
   })()
 }
 
+/** The job landed: put the app into its window. */
+export async function finishBuild(windowId: string, result: GenResult | undefined): Promise<void> {
+  const build = buildFor(windowId)
+  if (!build) return
+  // The request named a screen in an app that already exists: open it there instead.
+  if (result?.kind === 'view' && build.kind === 'create') {
+    const win = useShell.getState().windows.find((item) => item.id === windowId)
+    dropBuild(windowId)
+    if (win && isPending(win.appId)) useShell.getState().closeWindow(windowId)
+    await useShell.getState().refreshApps()
+    openPlace(result.appId, { appId: result.appId, viewId: result.viewId, intent: build.prompt || win?.title || '', title: win?.title })
+    return
+  }
+  if (!result || result.kind !== 'app') {
+    failBuild(windowId)
+    return
+  }
+  await openGenerated(result, build.kind !== 'fix', windowId)
+  dropBuild(windowId)
+}
+
+/** Pending windows are opened by the caller, so the window is up before any network. */
+export function startGeneration(prompt: string, title?: string): void {
+  const text = prompt.trim()
+  if (!text) return
+  const windowId = useShell.getState().openPending(title?.trim() || titleFor(text))
+  const retry = () => runBuild({ windowId, kind: 'create', prompt: text, retry }, () => postAuto(text))
+  retry()
+}
+
 export function openEditApp(appId: string): void {
-  void (async () => {
-    if (await blocked()) return
-    editAppId = appId
-    emit()
-  })()
+  editAppId = appId
+  emit()
+}
+
+/** Bring up a window for the app so the change has somewhere to land. */
+function windowForApp(appId: string): string | null {
+  const shell = useShell.getState()
+  shell.openApp(appId)
+  const win = useShell.getState().windows.filter((item) => item.appId === appId && item.phase !== 'closing').sort((a, b) => b.z - a.z)[0]
+  return win?.id ?? null
 }
 
 export function submitEdit(appId: string, prompt: string): void {
@@ -158,84 +201,24 @@ export function submitEdit(appId: string, prompt: string): void {
   if (!text) return
   editAppId = null
   emit()
-  void (async () => {
-    try {
-      const body = await postEdit(appId, text)
-      openPanel({ jobId: body.jobId, prompt: text, kind: 'edit', appId, retry: () => submitEdit(appId, text) })
-    } catch (err) {
-      useShell.getState().pushToast('Could not edit', err instanceof Error ? err.message : 'failed')
-    }
-  })()
+  const windowId = windowForApp(appId)
+  if (!windowId) return
+  const retry = () => runBuild({ windowId, kind: 'edit', appId, retry }, () => postEdit(appId, text))
+  retry()
 }
 
 export function regenerateApp(appId: string): void {
-  void (async () => {
-    if (await blocked()) return
-    const app = useShell.getState().apps.find((item) => item.id === appId)
-    try {
-      const body = await postRegenerate(appId)
-      openPanel({
-        jobId: body.jobId,
-        prompt: app?.prompt || app?.name || 'Regenerate',
-        kind: 'regenerate',
-        appId,
-        retry: () => regenerateApp(appId),
-      })
-    } catch (err) {
-      useShell.getState().pushToast('Could not regenerate', err instanceof Error ? err.message : 'failed')
-    }
-  })()
+  const windowId = windowForApp(appId)
+  if (!windowId) return
+  const retry = () => runBuild({ windowId, kind: 'regenerate', appId, retry }, () => postRegenerate(appId))
+  retry()
 }
 
-export function beginWindowFix(windowId: string, appId: string, appName: string): void {
-  if (fixing && fixing.appId === appId && fixing.windowId === windowId) return
-  fixing = { windowId, appId, appName, status: 'Getting ready…' }
-  emit()
-}
-
-export function noteFixProgress(jobId: string, text: string): void {
-  if (!fixing) return
-  if (fixing.jobId && fixing.jobId !== jobId) return
-  const next = calmFixStatus(text)
-  if (fixing.jobId === jobId && fixing.status === next) return
-  fixing = { ...fixing, jobId, status: next }
-  emit()
-}
-
-export function clearFixing(appId?: string): void {
-  if (!fixing) return
-  if (appId && fixing.appId !== appId) return
-  fixing = null
-  emit()
-}
-
-export function fixApp(appId: string, error: string): void {
-  void (async () => {
-    if (await blocked()) {
-      clearFixing(appId)
-      return
-    }
-    const shell = useShell.getState()
-    const win = shell.windows.find((item) => item.appId === appId && item.phase !== 'closing' && shell.windowErrors[item.id])
-    if (win && (!fixing || fixing.appId !== appId)) {
-      const app = shell.apps.find((item) => item.id === appId)
-      beginWindowFix(win.id, appId, app?.name || win.title)
-    }
-    try {
-      const body = await postFix(appId, error)
-      if (fixing && fixing.appId === appId && !fixing.jobId) fixing = { ...fixing, jobId: body.jobId }
-      openPanel({
-        jobId: body.jobId,
-        prompt: error,
-        kind: 'fix',
-        appId,
-        retry: () => fixApp(appId, error),
-      })
-    } catch (err) {
-      clearFixing(appId)
-      useShell.getState().pushToast('Could not start a fix', err instanceof Error ? err.message : 'failed')
-    }
-  })()
+export function fixApp(appId: string, error: string, windowId?: string): void {
+  const target = windowId ?? windowForApp(appId)
+  if (!target) return
+  const retry = () => runBuild({ windowId: target, kind: 'fix', appId, retry }, () => postFix(appId, error))
+  retry()
 }
 
 export async function restoreAppVersion(appId: string, version: number): Promise<void> {
@@ -254,8 +237,10 @@ export async function restoreAppVersion(appId: string, version: number): Promise
   })
 }
 
-export async function openGenerated(result: Extract<GenResult, { kind: 'app' }>, markFresh: boolean): Promise<void> {
+export async function openGenerated(result: Extract<GenResult, { kind: 'app' }>, markFresh: boolean, windowId?: string): Promise<void> {
   await useShell.getState().refreshApps()
+  const target = windowId ? useShell.getState().windows.find((win) => win.id === windowId && win.phase !== 'closing') : undefined
+  if (target && target.appId !== result.appId) useShell.getState().adoptWindow(target.id, result.appId, result.version)
   const app = useShell.getState().apps.find((item) => item.id === result.appId)
   const version = result.version || app?.version
   if (version) {
@@ -270,43 +255,32 @@ export async function openGenerated(result: Extract<GenResult, { kind: 'app' }>,
     })
   }
   if (markFresh && version) fresh.set(result.appId, { at: Date.now(), version, used: false })
-  clearFixing(result.appId)
-  useShell.getState().openApp(result.appId)
+  if (target) useShell.getState().focusWindow(target.id)
+  else if (!windowId) useShell.getState().openApp(result.appId)
 }
 
-export function noteRuntimeError(windowId: string, appId: string, version: number, message: string, appName: string): void {
+export function noteRuntimeError(windowId: string, appId: string, version: number, message: string): void {
   const mark = fresh.get(appId)
   if (!mark || mark.used || mark.version !== version) return
   if (Date.now() - mark.at > 10_000) return
   mark.used = true
-  beginWindowFix(windowId, appId, appName)
-  fixApp(appId, message)
+  fixApp(appId, message, windowId)
 }
 
-export function cancelPanel(jobId: string): void {
-  if (fixing?.jobId === jobId) clearFixing()
-  void postCancel(jobId).catch(() => undefined)
-}
-
-/** Display name for the provider id reported by /api/health. Empty until that id is known. */
-export function providerLabel(id?: string): string {
-  if (id === 'codex') return 'Codex'
-  if (id === 'claude') return 'Claude'
-  if (id === 'mock') return 'Mock'
-  if (id === 'grok') return 'Grok'
-  return ''
+export function cancelBuild(windowId: string): void {
+  const build = buildFor(windowId)
+  if (!build) return
+  dropBuild(windowId)
+  if (build.jobId && build.kind === 'create') void postCancel(build.jobId).catch(() => undefined)
 }
 
 export function jobActive(job: JobInfo): boolean {
   return job.state === 'queued' || job.state === 'running'
 }
 
-function calmFixStatus(text: string): string {
-  const line = text.replace(/\s+/g, ' ').trim()
-  if (!line || line.startsWith('{') || line.startsWith('[')) return 'Sketching…'
-  if (line === 'Queued') return 'Getting ready…'
-  if (line === 'Thinking') return 'Thinking…'
-  if (line === 'Compiling' || line === 'Fixing the response' || /^Fixing compile error\b/i.test(line)) return 'Putting it together…'
-  if (/^write\b/i.test(line)) return 'Writing…'
-  return line.length > 96 ? `${line.slice(0, 95).trim()}…` : line
+/** "a pomodoro timer" → "Pomodoro Timer". Only a window title until the real name arrives. */
+export function titleFor(prompt: string): string {
+  const line = prompt.replace(/\s+/g, ' ').trim().replace(/^(an?|the)\s+/i, '')
+  const short = line.length > 32 ? `${line.slice(0, 31).trim()}…` : line
+  return short.replace(/(^|\s)(\p{Ll})/gu, (_, space: string, letter: string) => space + letter.toUpperCase())
 }

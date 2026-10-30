@@ -60,7 +60,6 @@ type State = {
   aboutOpen: boolean
   shortcutsOpen: boolean
   drawerOpen: boolean
-  drawerPrompt: boolean
   spotlightOpen: boolean
   interacting: boolean
   snapPreview: SnapTarget | null
@@ -76,6 +75,8 @@ type Actions = {
   refreshApps: () => Promise<void>
   openApp: (appId: string) => void
   newWindow: (appId: string) => void
+  openPending: (title: string) => string
+  adoptWindow: (id: string, appId: string, version?: number) => void
   focusWindow: (id: string) => void
   closeWindow: (id: string) => void
   removeWindow: (id: string) => void
@@ -108,7 +109,6 @@ type Actions = {
   setAboutOpen: (open: boolean) => void
   setShortcutsOpen: (open: boolean) => void
   setDrawerOpen: (open: boolean) => void
-  setDrawerPrompt: (open: boolean) => void
   setSpotlightOpen: (open: boolean) => void
   setInteracting: (interacting: boolean) => void
   setShellPrompt: (prompt: ShellPrompt) => void
@@ -133,7 +133,6 @@ export const useShell = create<State & Actions>((set, get) => ({
   aboutOpen: false,
   shortcutsOpen: false,
   drawerOpen: false,
-  drawerPrompt: false,
   spotlightOpen: false,
   interacting: false,
   snapPreview: null,
@@ -193,8 +192,7 @@ export const useShell = create<State & Actions>((set, get) => ({
   newWindow: (appId) => {
     const app = get().apps.find((item) => item.id === appId)
     if (!app) return
-    const openCount = get().windows.filter((win) => win.phase === 'open' || win.phase === 'minimizing').length
-    const placed = placeWindow(app, openCount)
+    const placed = placeWindow(app, visibleRects(get().windows))
     const z = get().zCounter + 1
     const win: Win = {
       id: nanoid(10),
@@ -218,6 +216,53 @@ export const useShell = create<State & Actions>((set, get) => ({
     entering.add(win.id)
     bumpPulse(appId)
     set((state) => ({ windows: [...state.windows, win], focusedWindowId: win.id, zCounter: z, drawerOpen: false, spotlightOpen: false }))
+    scheduleSave()
+  },
+
+  openPending: (title) => {
+    const placed = placeWindow({ window: PENDING_FRAME }, visibleRects(get().windows))
+    const z = get().zCounter + 1
+    const win: Win = {
+      id: nanoid(10),
+      appId: `${PENDING}${nanoid(8)}`,
+      title,
+      ...placed,
+      minWidth: PENDING_FRAME.minWidth,
+      minHeight: PENDING_FRAME.minHeight,
+      resizable: true,
+      maximized: false,
+      snap: null,
+      restore: null,
+      z,
+      phase: 'open',
+      version: 0,
+      screens: [],
+    }
+    entering.add(win.id)
+    set((state) => ({ windows: [...state.windows, win], focusedWindowId: win.id, zCounter: z, drawerOpen: false, spotlightOpen: false }))
+    return win.id
+  },
+
+  adoptWindow: (id, appId, version) => {
+    const app = get().apps.find((item) => item.id === appId)
+    if (!app) return
+    set((state) => {
+      const windowErrors = { ...state.windowErrors }
+      delete windowErrors[id]
+      const windows = state.windows.map((win) => {
+        if (win.id !== id) return win
+        const next = { ...win, appId, title: app.name, version: version ?? app.version, minWidth: app.window.minWidth, minHeight: app.window.minHeight, resizable: app.window.resizable }
+        if (win.maximized || win.snap) return next
+        const area = workArea()
+        const width = fitSize(app.window.width, app.window.minWidth, area.width)
+        const height = fitSize(app.window.height, app.window.minHeight, area.height)
+        const x = clamp(win.x, area.x, area.x + Math.max(0, area.width - width))
+        const y = clamp(win.y, area.y, area.y + Math.max(0, area.height - height))
+        return { ...next, x, y, width, height }
+      })
+      return { windows, windowErrors }
+    })
+    bumpPulse(appId)
     scheduleSave()
   },
 
@@ -470,7 +515,6 @@ export const useShell = create<State & Actions>((set, get) => ({
   setAboutOpen: (aboutOpen) => set({ aboutOpen }),
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   setDrawerOpen: (drawerOpen) => set({ drawerOpen, spotlightOpen: drawerOpen ? false : get().spotlightOpen }),
-  setDrawerPrompt: (drawerPrompt) => set({ drawerPrompt }),
   setSpotlightOpen: (spotlightOpen) => set({ spotlightOpen, drawerOpen: spotlightOpen ? false : get().drawerOpen }),
   setInteracting: (interacting) => set({ interacting }),
   setShellPrompt: (shellPrompt) => set({ shellPrompt }),
@@ -546,7 +590,7 @@ function scheduleSave(): void {
       dockPins: state.dockPins,
       focusedWindowId: state.focusedWindowId,
       windows: state.windows
-        .filter((win) => win.phase !== 'closing')
+        .filter((win) => win.phase !== 'closing' && !isPending(win.appId))
         .map((win) => ({
           id: win.id,
           appId: win.appId,
@@ -633,15 +677,55 @@ const CASCADE = 8
 const CASCADE_X = 28
 const CASCADE_Y = 22
 
-function placeWindow(app: AppManifest, openCount: number): { x: number; y: number; width: number; height: number } {
+const PENDING = 'pending:'
+const PENDING_FRAME = { width: 640, height: 480, minWidth: 360, minHeight: 260 }
+
+/** A window opened before its app exists. It is never persisted. */
+export function isPending(appId: string): boolean {
+  return appId.startsWith(PENDING)
+}
+
+const GAP = 16
+
+function visibleRects(windows: Win[]): Rect[] {
+  return windows.filter((win) => win.phase === 'open' || win.phase === 'restoring').map((win) => ({ x: win.x, y: win.y, width: win.width, height: win.height }))
+}
+
+function overlapArea(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)
+  const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y)
+  return w > 0 && h > 0 ? w * h : 0
+}
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+}
+
+/** Centre first, then beside an open window, then cascade once the desk is full. */
+function placeWindow(app: { window: { width: number; height: number; minWidth: number; minHeight: number } }, others: Rect[]): Rect {
   const area = workArea()
   const width = fitSize(app.window.width, app.window.minWidth, area.width)
   const height = fitSize(app.window.height, app.window.minHeight, area.height)
-  const slot = openCount % CASCADE
   const maxX = area.x + Math.max(0, area.width - width)
   const maxY = area.y + Math.max(0, area.height - height)
-  const x = clamp(Math.round(area.x + (area.width - width) / 2 + slot * CASCADE_X), area.x, maxX)
-  const y = clamp(Math.round(area.y + (area.height - height) / 2 + slot * CASCADE_Y), area.y, maxY)
+  const centre = { x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + (area.height - height) / 2) }
+  const candidates = [centre]
+  for (const other of others) {
+    const y = clamp(other.y, area.y, maxY)
+    candidates.push({ x: other.x + other.width + GAP, y }, { x: other.x - width - GAP, y })
+  }
+  for (const spot of candidates) {
+    const rect = { ...spot, width, height }
+    const inside = spot.x >= area.x && spot.x <= maxX && spot.y >= area.y && spot.y <= maxY
+    if (inside && !others.some((other) => overlaps(rect, other))) return rect
+  }
+  // No free spot: spread toward whichever edge leaves the most of everything visible.
+  const edges = [maxX, area.x].map((x) => ({ x, y: centre.y, width, height }))
+  const best = edges.map((rect) => ({ rect, covered: others.reduce((sum, other) => sum + overlapArea(rect, other), 0) })).sort((a, b) => a.covered - b.covered)[0]
+  if (best && best.covered < width * height * 0.6) return best.rect
+  const slot = others.length % CASCADE
+  const x = clamp(centre.x + slot * CASCADE_X, area.x, maxX)
+  const y = clamp(centre.y + slot * CASCADE_Y, area.y, maxY)
   return { x, y, width, height }
 }
 

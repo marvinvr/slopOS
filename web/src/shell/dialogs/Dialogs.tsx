@@ -13,7 +13,7 @@ export function ShellDialogs() {
     return (
       <Confirm
         title="Reset slopOS?"
-        body="This erases every app and everything in this world. slopOS starts fresh."
+        body="All apps and their data will be erased. This can’t be undone."
         confirmLabel="Reset"
         onCancel={() => close(null)}
         onConfirm={() => resetWorld()}
@@ -176,18 +176,23 @@ function readHistory(manifest: Record<string, unknown>): HistoryRow[] {
   if (Array.isArray(manifest.prompts)) {
     manifest.prompts.forEach((entry, index) => {
       if (typeof entry === 'string') {
-        rows.push({ label: entry, detail: `Edit ${index + 1}` })
+        rows.push({ label: `Update ${index + 1}` })
         return
       }
       if (!entry || typeof entry !== 'object') return
       const record = entry as Record<string, unknown>
-      const text = typeof record.prompt === 'string' ? record.prompt : typeof record.text === 'string' ? record.text : ''
-      if (!text) return
       const rowVersion = typeof record.version === 'number' ? record.version : undefined
-      const detail = rowVersion ? `Version ${rowVersion}` : `Edit ${index + 1}`
-      rows.push({ label: text, detail, version: rowVersion })
+      const label = rowVersion ? `Version ${rowVersion}` : `Update ${index + 1}`
+      rows.push({ label, detail: when(record.at), version: rowVersion })
     })
   }
-  if (!rows.length && prompt) rows.push({ label: prompt, detail: version ? `Version ${version}` : 'Original', version })
-  return rows
+  if (!rows.length && prompt) rows.push({ label: version ? `Version ${version}` : 'Original', version })
+  return rows.reverse()
+}
+
+function when(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return undefined
+  return date.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }

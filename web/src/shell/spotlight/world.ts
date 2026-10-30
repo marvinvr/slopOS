@@ -55,7 +55,7 @@ export function openThing(entity: WorldEntity): void {
   const app = entity.appId ? shell.apps.find((item) => item.id === entity.appId) : undefined
   const intent = entity.name.trim()
   if (!app || !intent) {
-    startGeneration(thingPrompt(entity))
+    startGeneration(thingPrompt(entity), entity.name)
     return
   }
   const wasOpen = shell.windows.some((win) => win.appId === app.id && win.phase === 'open')

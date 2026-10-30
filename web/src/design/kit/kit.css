@@ -1409,70 +1409,6 @@
   position: relative;
 }
 
-.slop-generative::after {
-  content: "";
-  position: absolute;
-  top: 5px;
-  right: 6px;
-  width: 14px;
-  height: 14px;
-  opacity: 0;
-  transform: scale(0.72);
-  background: var(--slop-accent);
-  pointer-events: none;
-  transition: opacity 160ms var(--slop-ease), transform 180ms var(--slop-ease);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M8 1.1 9.15 6.2 14.2 8 9.15 9.8 8 14.9 6.85 9.8 1.8 8 6.85 6.2Z'/%3E%3Cpath fill='black' d='M12.4 1.15 12.95 2.85 14.65 3.4 12.95 3.95 12.4 5.65 11.85 3.95 10.15 3.4 11.85 2.85Z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M8 1.1 9.15 6.2 14.2 8 9.15 9.8 8 14.9 6.85 9.8 1.8 8 6.85 6.2Z'/%3E%3Cpath fill='black' d='M12.4 1.15 12.95 2.85 14.65 3.4 12.95 3.95 12.4 5.65 11.85 3.95 10.15 3.4 11.85 2.85Z'/%3E%3C/svg%3E") center / contain no-repeat;
-}
-
-.slop-generative:hover::after,
-.slop-generative:focus-visible::after {
-  opacity: 1;
-  transform: none;
-}
-
-.slop-generative:hover:not(:disabled):not(.is-busy) {
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 16 16'%3E%3Cpath fill='%23e4532d' d='M8 1.1 9.15 6.2 14.2 8 9.15 9.8 8 14.9 6.85 9.8 1.8 8 6.85 6.2Z'/%3E%3Cpath fill='%23e4532d' d='M12.4 1.15 12.95 2.85 14.65 3.4 12.95 3.95 12.4 5.65 11.85 3.95 10.15 3.4 11.85 2.85Z'/%3E%3C/svg%3E") 4 4, pointer;
-}
-
-.slop-btn.slop-generative:hover:not(:disabled):not(.is-busy):not(.primary),
-.slop-list-item.slop-generative:hover:not(:disabled):not(.is-busy),
-.slop-card.slop-generative:hover:not(.is-busy) {
-  background: color-mix(in srgb, var(--slop-accent) 10%, transparent);
-}
-
-.slop-link.slop-generative:hover:not(:disabled):not(.is-busy) {
-  background: color-mix(in srgb, var(--slop-accent) 10%, transparent);
-  border-radius: 4px;
-}
-
-.slop-search.slop-generative {
-  padding-right: 28px;
-}
-
-.slop-search.slop-generative:hover:not(.is-busy),
-.slop-search.slop-generative:focus-within {
-  border-color: color-mix(in srgb, var(--slop-accent) 42%, var(--slop-border));
-  background: color-mix(in srgb, var(--slop-accent) 7%, var(--slop-bg-sunken));
-}
-
-.slop-btn.primary.slop-generative:hover::after,
-.slop-btn.primary.slop-generative:focus-visible::after {
-  background: var(--slop-accent-fg);
-}
-
-.slop-search.slop-generative::after,
-.slop-search.slop-generative:hover::after,
-.slop-search.slop-generative:focus-visible::after {
-  top: 50%;
-  right: 8px;
-  margin-top: -7px;
-}
-
-.slop-generative.is-busy::after {
-  content: none;
-}
-
 .slop-btn.is-busy,
 .slop-list-item.is-busy,
 .slop-card.is-busy,
@@ -1532,8 +1468,7 @@
   .slop-sheet,
   .slop-btn.is-busy::before,
   .slop-list-item.is-busy::before,
-  .slop-card.is-busy::before,
-  .slop-generative::after {
+  .slop-card.is-busy::before {
     animation: none;
     transition: none;
   }

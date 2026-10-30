@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { Button } from '../../design/kit'
 import { SLOP_VERSION } from '../../version'
-import { providerLabel, useGrokStatus } from '../generation'
 import { Mark } from '../icons'
 import { pushLayer } from '../layers'
 import { useShell } from '../store'
@@ -9,7 +8,6 @@ import { useShell } from '../store'
 export function AboutDialog() {
   const open = useShell((state) => state.aboutOpen)
   const close = useShell((state) => state.setAboutOpen)
-  const provider = providerLabel(useGrokStatus().provider)
 
   useEffect(() => {
     if (!open) return
@@ -26,7 +24,6 @@ export function AboutDialog() {
         <h1 id="slop-about-title">slopOS</h1>
         <p className="version">Version {SLOP_VERSION}</p>
         <p className="line">A calm desktop for small apps.</p>
-        <p className="written">{provider ? `Apps are written by ${provider}.` : 'Apps are written the moment you ask.'}</p>
         <div style={{ marginTop: 18 }}>
           <Button variant="primary" onClick={() => close(false)}>
             Done

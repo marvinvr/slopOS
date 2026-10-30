@@ -1,33 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Icon, Text } from '../../design/kit'
-import { cx } from '../../design/kit/cx'
-import { GenerationActivity, jobActive, providerLabel, useGeneration } from '../generation'
+import { Icon } from '../../design/kit'
 import { pushLayer } from '../layers'
-import { useShell } from '../store'
 
 const WEEK = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
-
-type GeneratorPhase = 'is-ready' | 'is-busy' | 'is-off'
 
 export function StatusArea() {
   const [now, setNow] = useState(() => new Date())
   const [open, setOpen] = useState(false)
-  const [genOpen, setGenOpen] = useState(false)
   const [online, setOnline] = useState(true)
-  const { status, jobs } = useGeneration()
-  const openApp = useShell((state) => state.openApp)
-  const running = jobs.some(jobActive)
-  const provider = providerLabel(status.provider)
-  const phase: GeneratorPhase = running ? 'is-busy' : status.available ? 'is-ready' : 'is-off'
-  const genLabel = !provider
-    ? 'Checking the generator'
-    : running
-      ? `${provider} is generating`
-      : status.available
-        ? `${provider} ready`
-        : `${provider} unavailable`
-  const activeJobs = jobs.filter(jobActive)
-  const recentJobs = jobs.filter((job) => !jobActive(job)).slice(0, 6)
 
   useEffect(() => {
     const tick = () => setNow(new Date())
@@ -75,31 +55,8 @@ export function StatusArea() {
 
   useEffect(() => {
     if (!open) return
-    setGenOpen(false)
     return pushLayer(() => setOpen(false))
   }, [open])
-
-  useEffect(() => {
-    if (!genOpen) return
-    const onPointer = (event: PointerEvent) => {
-      const target = event.target as HTMLElement
-      if (!target.closest('.shell-gen')) setGenOpen(false)
-    }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setGenOpen(false)
-    }
-    window.addEventListener('pointerdown', onPointer)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('pointerdown', onPointer)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [genOpen])
-
-  useEffect(() => {
-    if (!genOpen) return
-    return pushLayer(() => setGenOpen(false))
-  }, [genOpen])
 
   const weekday = now.toLocaleDateString('en-GB', { weekday: 'short' })
   const month = now.toLocaleDateString('en-GB', { month: 'short' })
@@ -109,62 +66,11 @@ export function StatusArea() {
 
   return (
     <div className="shell-status">
-      <GenerationActivity />
-      <span className={online ? 'shell-status-icon' : 'shell-status-icon is-down'} role="img" tabIndex={0} aria-label={online ? 'Connected' : 'Can’t reach slopOS'}>
+      <span className={online ? 'shell-status-icon' : 'shell-status-icon is-down'} role="img" tabIndex={0} aria-label={online ? 'Connected' : 'Not connected'}>
         <Icon name={online ? 'Wifi' : 'WifiOff'} size={14} />
         <span className="shell-status-tip" role="tooltip">
-          {online ? 'Connected' : 'Can’t reach slopOS'}
+          {online ? 'Connected' : 'Not connected'}
         </span>
-      </span>
-      <span className="shell-gen">
-        <button
-          type="button"
-          className={cx('shell-status-icon', 'shell-gen', phase)}
-          aria-label={genLabel}
-          aria-expanded={genOpen}
-          onClick={() => {
-            setOpen(false)
-            setGenOpen((value) => !value)
-          }}
-        >
-          <Icon name="Sparkles" size={14} />
-          <span className="shell-gen-dot" aria-hidden />
-        </button>
-        {genOpen ? (
-          <div className="gen-queue" role="dialog" aria-label={genLabel}>
-            <p className="gen-status-line">
-              {provider || 'Generator'}
-              {status.model ? ` · ${status.model}` : ''}
-              {status.effort ? ` · ${status.effort}` : ''}
-            </p>
-            {!status.available ? <Text size="sm">{status.reason || `${provider || 'The generator'} isn't available`}</Text> : null}
-            {activeJobs.length ? <p className="gen-status-kicker">Queue</p> : null}
-            {activeJobs.map((job) => (
-              <div key={job.id} className="gen-queue-row">
-                <Text size="sm">{clip(job.prompt, 72)}</Text>
-                <Text muted size="xs">{job.state}</Text>
-              </div>
-            ))}
-            {status.available && !activeJobs.length ? <Text muted size="sm">Nothing generating.</Text> : null}
-            {recentJobs.length ? <p className="gen-status-kicker">Recent</p> : null}
-            {recentJobs.map((job) => (
-              <button
-                key={job.id}
-                type="button"
-                className="gen-queue-row"
-                disabled={!job.appId}
-                onClick={() => {
-                  if (!job.appId) return
-                  openApp(job.appId)
-                  setGenOpen(false)
-                }}
-              >
-                <span>{clip(job.prompt, 72)}</span>
-                <span className="gen-queue-meta">{job.state}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
       </span>
       <button type="button" className="shell-clock" aria-expanded={open} aria-label="Date and time" onClick={() => setOpen((value) => !value)}>
         <span>{clock}</span>
@@ -172,11 +78,6 @@ export function StatusArea() {
       {open ? <Calendar now={now} /> : null}
     </div>
   )
-}
-
-function clip(text: string, max: number): string {
-  const line = text.replace(/\s+/g, ' ').trim()
-  return line.length <= max ? line : `${line.slice(0, max - 1).trim()}…`
 }
 
 function Calendar({ now }: { now: Date }) {

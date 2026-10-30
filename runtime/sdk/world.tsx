@@ -1,9 +1,9 @@
 import { Component, createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import { Button, GenerativeProvider, Heading, IconButton, Menu, Text } from '../../web/src/design/kit'
+import { Button, GenerativeProvider, Heading, IconButton, Menu } from '../../web/src/design/kit'
 import type { PersistedScreen } from '../protocol'
 import { ScreenTitle } from './context'
 import { frameAppId, onHostMessage, send } from './host'
-import { bindGenContext, friendlyProgress, requestGeneration, setGenAppLabel, setGenScreenLabel, type GenRequest, type GenResult } from './gen-client'
+import { bindGenContext, requestGeneration, setGenAppLabel, setGenScreenLabel, type GenRequest, type GenResult } from './gen-client'
 import { ConfirmHost } from './confirm'
 
 export type { GenRequest, GenResult }
@@ -89,14 +89,14 @@ export function useGenerated<T = unknown>(req: GenRequest | null): Generated<T> 
       .then((result) => {
         if (cancel) return
         if (result.kind !== 'content') {
-          setState({ status: 'error', error: 'Expected generated content' })
+          setState({ status: 'error', error: 'Couldn’t load' })
           return
         }
         setState({ status: 'ready', data: result.data })
       })
       .catch((err: unknown) => {
         if (cancel) return
-        const message = err instanceof Error ? err.message : 'Generation failed'
+        const message = err instanceof Error ? err.message : 'Couldn’t load'
         setState((prev) => ({ status: 'error', error: message, data: prev.data }))
       })
     return () => {
@@ -134,7 +134,7 @@ export function GenerativeView({ intent, context, fallback }: { intent: string; 
       .catch((err: unknown) => {
         if (cancel) return
         setPhase('error')
-        setError(err instanceof Error ? err.message : 'Generation failed')
+        setError(err instanceof Error ? err.message : 'Couldn’t load')
       })
     return () => {
       cancel = true
@@ -212,7 +212,7 @@ export function WorldProvider({ children }: { children: ReactNode }) {
           patch(id, { phase: 'ready', viewId: result.viewId, error: undefined, progress: undefined, rev: Date.now() })
         })
         .catch((err: unknown) => {
-          patch(id, { phase: 'error', error: err instanceof Error ? err.message : 'Generation failed', progress: undefined })
+          patch(id, { phase: 'error', error: err instanceof Error ? err.message : 'Couldn’t load', progress: undefined })
         })
     }
 
@@ -234,7 +234,7 @@ export function WorldProvider({ children }: { children: ReactNode }) {
           setScreens((stack) => stack.filter((screen) => screen.id !== id))
         })
         .catch((err: unknown) => {
-          patch(id, { phase: 'error', error: err instanceof Error ? err.message : 'Generation failed', progress: undefined })
+          patch(id, { phase: 'error', error: err instanceof Error ? err.message : 'Couldn’t load', progress: undefined })
         })
         .finally(() => {
           if (busyRef.current === label) {
@@ -323,14 +323,14 @@ export function WorldProvider({ children }: { children: ReactNode }) {
         )
       })
       .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Generation failed'
+        const message = err instanceof Error ? err.message : 'Couldn’t load'
         setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'error', error: message, progress: undefined } : item)))
       })
   }
 
   function regenerate(screen: Screen) {
     if (!screen.intent) return
-    setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'loading', progress: 'Redrawing…', error: undefined } : item)))
+    setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'loading', error: undefined } : item)))
     requestGeneration('gen.request', { intent: screen.intent, kind: 'view', context: screen.context, fresh: true }, (text) => {
       setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, progress: text } : item)))
     })
@@ -343,7 +343,7 @@ export function WorldProvider({ children }: { children: ReactNode }) {
         )
       })
       .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Generation failed'
+        const message = err instanceof Error ? err.message : 'Couldn’t load'
         setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'error', error: message } : item)))
       })
   }
@@ -383,7 +383,6 @@ function ScreenStage({
   onRetry: () => void
   onRegenerate: () => void
 }) {
-  const refreshing = screen.phase === 'loading' && Boolean(screen.viewId)
   return (
     <div className={screen.phase === 'loading' ? 'slop-screen is-loading' : 'slop-screen'}>
       <header className="slop-screen-bar">
@@ -392,7 +391,7 @@ function ScreenStage({
         <Menu
           align="end"
           trigger={<IconButton icon="MoreHorizontal" label="Screen options" />}
-          items={[{ label: 'Regenerate', disabled: !screen.intent, onSelect: onRegenerate }]}
+          items={[{ label: 'Reload', disabled: !screen.intent, onSelect: onRegenerate }]}
         />
       </header>
       <div className="slop-screen-body">
@@ -406,18 +405,17 @@ function ScreenStage({
             context={screen.context}
           />
         ) : (
-          <Materializing title={screen.title} status={screen.progress} showTitle={false} />
+          <Materializing title={screen.title} showTitle={false} />
         )}
-        {refreshing ? <div className="slop-screen-note">{screen.progress || 'Redrawing…'}</div> : null}
       </div>
     </div>
   )
 }
 
-function Materializing({ title, status, showTitle = true }: { title: string; status?: string; showTitle?: boolean }) {
+function Materializing({ title, showTitle = true }: { title: string; status?: string; showTitle?: boolean }) {
   return (
-    <div className="slop-material" role="status" aria-live="polite">
-      {showTitle ? <h2 className="slop-material-title">{title}</h2> : <span className="slop-sr">{title}</span>}
+    <div className="slop-material" role="status" aria-label={`Loading ${title}`}>
+      {showTitle ? <h2 className="slop-material-title">{title}</h2> : null}
       <div className="slop-skeleton" aria-hidden>
         {showTitle ? null : <div className="slop-skeleton-heading" />}
         <div className="slop-skeleton-line" />
@@ -429,26 +427,20 @@ function Materializing({ title, status, showTitle = true }: { title: string; sta
           <div className="slop-skeleton-row is-short" />
         </div>
       </div>
-      <p className="slop-material-status">
-        <span className="slop-material-dot" aria-hidden />
-        <span>{calmLine(status)}</span>
-      </p>
     </div>
   )
 }
 
-function calmLine(status?: string): string {
-  return friendlyProgress(status || '') ?? 'Sketching…'
-}
-
 function GenError({ message, onRetry }: { message?: string; onRetry?: () => void }) {
+  useEffect(() => {
+    if (message) console.warn(message)
+  }, [message])
   return (
     <div className="slop-gen-error">
-      <Heading level={2}>This didn’t come through</Heading>
-      <Text muted>{message || 'Something got in the way.'}</Text>
+      <Heading level={2}>This page couldn’t be loaded.</Heading>
       {onRetry ? (
         <Button variant="primary" onClick={onRetry}>
-          Try again
+          Try Again
         </Button>
       ) : null}
     </div>
@@ -491,7 +483,7 @@ function ViewFrame({ viewId, rev, params, context }: { viewId: string; rev: numb
   }, [viewId, rev])
 
   if (error) return <GenError message={error} />
-  if (!Comp) return <Materializing title="Page" showTitle={false} status="Opening…" />
+  if (!Comp) return <Materializing title="Page" showTitle={false} />
   return (
     <ViewBoundary key={`${viewId}:${rev}`}>
       <Comp params={params} context={context} />
