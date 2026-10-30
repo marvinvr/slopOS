@@ -165,7 +165,7 @@ function taskBody(request: PromptRequest): string {
       'Choose how to satisfy the intent:',
       '- {"route":"existing","appId":"<id>"} when an app in the world already does this.',
       '- {"route":"view","appId":"<id>"} when it is another screen of the calling app (or of appId you were given).',
-      '- {"route":"app"} when it is a different job and needs its own app.',
+      '- {"route":"app","appId":""} when it is a different job and needs its own app.',
       `Schema: ${JSON.stringify(request.schema)}`,
       `Calling app: ${request.appId || 'none'}`,
       `Intent: ${request.intent}`,

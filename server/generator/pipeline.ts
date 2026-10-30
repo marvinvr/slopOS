@@ -12,7 +12,7 @@ import { buildPrompt, type PromptRequest } from './prompts'
 import { getProvider } from './providers/load'
 import { cancelAll, dropJobs, enqueue, flushPersist, jobForKey, silenceJobs, type JobContext } from './queue'
 import { runProvider } from './runner'
-import { parseJsonText, ROUTE_SCHEMA, validateJson } from './schema'
+import { parseJsonText, ROUTE_SCHEMA, strictOutputSchema, validateJson } from './schema'
 import { clearSessions, loadSession } from './sessions'
 import { GeneratorError, type GenKind, type GenResult, type SseEvent } from './types'
 import { cacheKeyOf, getCached, mergeDelta, putCached, rememberLog, rememberView, viewsFor, worldDigest, worldSnapshot, type WorldDelta } from './world'
@@ -419,6 +419,9 @@ async function generateJson(
     cwd: string
   },
 ): Promise<unknown> {
+  const provider = await getProvider()
+  const schema =
+    input.schema && (provider.id === 'codex' || provider.id === 'claude') ? strictOutputSchema(input.schema) : input.schema
   let sessionId: string | undefined
   let problems: string[] = []
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -429,14 +432,14 @@ async function generateJson(
       mode: input.mode,
       intent: problems.length ? `${input.intent}\n\nThe previous JSON was invalid:\n${problems.join('\n')}` : input.intent,
       appId: input.appId,
-      schema: input.schema,
+      schema,
       attempt,
     })
     const turn = await drive(ctx, {
       prompt: built.prompt,
       cwd: input.cwd,
       kind: input.kind,
-      schema: input.schema,
+      schema,
       resumeSessionId: attempt === 1 ? undefined : sessionId,
       freshSession: attempt === 1,
       sessionKey: input.sessionKey,
@@ -444,7 +447,7 @@ async function generateJson(
     sessionId = turn.sessionId || sessionId
     try {
       const data = parseJsonText(turn.output)
-      problems = validateJson(input.schema, data)
+      problems = validateJson(schema, data)
       if (!problems.length) return data
     } catch (err) {
       problems = [err instanceof Error ? err.message : 'invalid JSON']
