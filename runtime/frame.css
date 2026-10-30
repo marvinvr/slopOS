@@ -73,16 +73,15 @@ body {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--slop-accent), transparent);
-  background-size: 28% 100%;
-  background-repeat: no-repeat;
-  animation: slop-screen-gleam 1.6s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent 0%, transparent 36%, var(--slop-accent) 50%, transparent 64%, transparent 100%) 0 0 / 200% 100% repeat-x;
+  animation: slop-sweep 1.6s linear infinite;
   opacity: 0.9;
 }
 
-@keyframes slop-screen-gleam {
-  from { background-position: -30% 0; }
-  to { background-position: 130% 0; }
+/* Shared by every skeleton and the loading gleam: a 200% tile moved by exactly one tile, so the end frame is the start frame. */
+@keyframes slop-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
 }
 
 .slop-screen-title {
@@ -140,13 +139,14 @@ body {
 .slop-skeleton-row {
   border-radius: 999px;
   background: linear-gradient(
-    100deg,
+    90deg,
     var(--slop-bg-sunken) 0%,
-    color-mix(in srgb, var(--slop-bg-elevated) 55%, var(--slop-fg) 8%) 46%,
-    var(--slop-bg-sunken) 88%
-  );
-  background-size: 220% 100%;
-  animation: slop-shimmer 1.8s ease-in-out infinite;
+    var(--slop-bg-sunken) 30%,
+    color-mix(in srgb, var(--slop-bg-elevated) 55%, var(--slop-fg) 8%) 50%,
+    var(--slop-bg-sunken) 70%,
+    var(--slop-bg-sunken) 100%
+  ) 0 0 / 200% 100% repeat-x;
+  animation: slop-sweep 1.8s linear infinite;
 }
 
 .slop-skeleton-heading {
@@ -183,11 +183,6 @@ body {
 
 .slop-skeleton-card .slop-skeleton-row:nth-child(2) { width: 78%; animation-delay: 0.15s; }
 .slop-skeleton-row.is-short { width: 48%; animation-delay: 0.28s; }
-
-@keyframes slop-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .slop-skeleton-heading,

@@ -5,6 +5,7 @@ import { ScreenTitle } from './context'
 import { frameAppId, frameCapture, onHostMessage, send } from './host'
 import { bindGenContext, requestGeneration, setGenAppLabel, setGenScreenLabel, type GenRequest, type GenResult } from './gen-client'
 import { ConfirmHost } from './confirm'
+import { randomUUID } from '../uuid'
 
 export type { GenRequest, GenResult }
 
@@ -526,7 +527,7 @@ function hash(text: string): string {
 }
 
 function uid(): string {
-  return crypto.randomUUID()
+  return randomUUID()
 }
 
 function stable(value: unknown): string {

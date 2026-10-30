@@ -1003,7 +1003,7 @@
 
 .slop-progress-fill.is-indeterminate {
   width: 40%;
-  animation: slop-indeterminate 1.1s var(--slop-ease) infinite;
+  animation: slop-indeterminate 1.1s linear infinite;
 }
 
 @keyframes slop-indeterminate {
