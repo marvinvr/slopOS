@@ -19,11 +19,20 @@ export type PanelJob = {
   retry: () => void
 }
 
+export type WindowFix = {
+  windowId: string
+  appId: string
+  appName: string
+  jobId?: string
+  status: string
+}
+
 type Snapshot = {
   status: GrokStatus
   jobs: JobInfo[]
   panel: PanelJob | null
   editAppId: string | null
+  fixing: WindowFix | null
 }
 
 const listeners = new Set<() => void>()
@@ -31,15 +40,16 @@ let status: GrokStatus = { available: false, reason: 'Checking…' }
 let jobs: JobInfo[] = []
 let panel: PanelJob | null = null
 let editAppId: string | null = null
+let fixing: WindowFix | null = null
 let statusAt = 0
 let statusFlight: Promise<void> | null = null
 // useSyncExternalStore bails the tree if getSnapshot returns a new object every call.
-let snap: Snapshot = { status, jobs, panel, editAppId }
+let snap: Snapshot = { status, jobs, panel, editAppId, fixing }
 
 const fresh = new Map<string, { at: number; version: number; used: boolean }>()
 
 function emit(): void {
-  snap = { status, jobs, panel, editAppId }
+  snap = { status, jobs, panel, editAppId, fixing }
   for (const listener of listeners) listener()
 }
 
@@ -171,11 +181,43 @@ export function regenerateApp(appId: string): void {
   })()
 }
 
+export function beginWindowFix(windowId: string, appId: string, appName: string): void {
+  if (fixing && fixing.appId === appId && fixing.windowId === windowId) return
+  fixing = { windowId, appId, appName, status: 'Getting ready…' }
+  emit()
+}
+
+export function noteFixProgress(jobId: string, text: string): void {
+  if (!fixing) return
+  if (fixing.jobId && fixing.jobId !== jobId) return
+  const next = calmFixStatus(text)
+  if (fixing.jobId === jobId && fixing.status === next) return
+  fixing = { ...fixing, jobId, status: next }
+  emit()
+}
+
+export function clearFixing(appId?: string): void {
+  if (!fixing) return
+  if (appId && fixing.appId !== appId) return
+  fixing = null
+  emit()
+}
+
 export function fixApp(appId: string, error: string): void {
   void (async () => {
-    if (await blocked()) return
+    if (await blocked()) {
+      clearFixing(appId)
+      return
+    }
+    const shell = useShell.getState()
+    const win = shell.windows.find((item) => item.appId === appId && item.phase !== 'closing' && shell.windowErrors[item.id])
+    if (win && (!fixing || fixing.appId !== appId)) {
+      const app = shell.apps.find((item) => item.id === appId)
+      beginWindowFix(win.id, appId, app?.name || win.title)
+    }
     try {
       const body = await postFix(appId, error)
+      if (fixing && fixing.appId === appId && !fixing.jobId) fixing = { ...fixing, jobId: body.jobId }
       openPanel({
         jobId: body.jobId,
         prompt: error,
@@ -184,6 +226,7 @@ export function fixApp(appId: string, error: string): void {
         retry: () => fixApp(appId, error),
       })
     } catch (err) {
+      clearFixing(appId)
       useShell.getState().pushToast('Could not start a fix', err instanceof Error ? err.message : 'failed')
     }
   })()
@@ -221,6 +264,7 @@ export async function openGenerated(result: Extract<GenResult, { kind: 'app' }>,
     })
   }
   if (markFresh && version) fresh.set(result.appId, { at: Date.now(), version, used: false })
+  clearFixing(result.appId)
   useShell.getState().openApp(result.appId)
 }
 
@@ -229,13 +273,12 @@ export function noteRuntimeError(windowId: string, appId: string, version: numbe
   if (!mark || mark.used || mark.version !== version) return
   if (Date.now() - mark.at > 10_000) return
   mark.used = true
-  useShell.getState().setWindowError(windowId, null)
-  const name = providerLabel(status.provider) || 'The generator'
-  useShell.getState().pushToast(`slopOS hit an error in ${appName} — ${name} is fixing it`)
+  beginWindowFix(windowId, appId, appName)
   fixApp(appId, message)
 }
 
 export function cancelPanel(jobId: string): void {
+  if (fixing?.jobId === jobId) clearFixing()
   void postCancel(jobId).catch(() => undefined)
 }
 
@@ -250,4 +293,14 @@ export function providerLabel(id?: string): string {
 
 export function jobActive(job: JobInfo): boolean {
   return job.state === 'queued' || job.state === 'running'
+}
+
+function calmFixStatus(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+  if (!line || line.startsWith('{') || line.startsWith('[')) return 'Sketching…'
+  if (line === 'Queued') return 'Getting ready…'
+  if (line === 'Thinking') return 'Thinking…'
+  if (line === 'Compiling' || line === 'Fixing the response' || /^Fixing compile error\b/i.test(line)) return 'Putting it together…'
+  if (/^write\b/i.test(line)) return 'Writing…'
+  return line.length > 96 ? `${line.slice(0, 95).trim()}…` : line
 }

@@ -67,8 +67,8 @@ function ensureListener(): void {
     const waiter = waiters.get(requestId)
     if (!waiter) return
     if (msg.type === 'gen.progress') {
-      const text = payload.text?.trim()
-      if (text && !text.startsWith('{') && !text.startsWith('[')) waiter.onProgress?.(text)
+      const text = friendlyProgress(payload.text || '')
+      if (text) waiter.onProgress?.(text)
       return
     }
     if (msg.type === 'gen.result' && payload.result) {
@@ -81,6 +81,16 @@ function ensureListener(): void {
       waiter.reject(new Error(payload.error || 'Generation failed'))
     }
   })
+}
+
+/** A line an app can show. Raw job states never leave the SDK. */
+export function friendlyProgress(text: string): string | null {
+  const line = text.replace(/\s+/g, ' ').trim()
+  if (!line || line.startsWith('{') || line.startsWith('[')) return null
+  if (line === 'Queued') return 'Getting ready…'
+  if (line === 'Thinking') return 'Thinking…'
+  if (line === 'Compiling' || line === 'Fixing the response' || /^Fixing compile error\b/i.test(line)) return 'Putting it together…'
+  return line.length > 96 ? `${line.slice(0, 95).trim()}…` : line
 }
 
 function finish(requestId: string): void {

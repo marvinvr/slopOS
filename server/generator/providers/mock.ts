@@ -74,6 +74,43 @@ export default function App( {
 }
 `
 
+// Compiles, then throws on first render. A fix job writes steadyApp() instead.
+function crashyApp(): string {
+  return `import { Heading, Stack, Text } from '@slop/sdk'
+
+// slop-crashy
+export default function App() {
+  const slipped = true
+  if (slipped) throw new Error('The counter slipped.')
+  return (
+    <Stack gap={12} style={{ height: '100%', padding: 20 }}>
+      <Heading>Notes</Heading>
+      <Text>A quiet page.</Text>
+    </Stack>
+  )
+}
+`
+}
+
+function steadyApp(): string {
+  return `import { useState } from 'react'
+import { Button, Heading, Stack, Text } from '@slop/sdk'
+
+// slop-mark v2
+export default function App() {
+  const [slipped, setSlipped] = useState(false)
+  if (slipped) throw new Error('The counter slipped.')
+  return (
+    <Stack gap={12} style={{ height: '100%', padding: 20 }}>
+      <Heading>Notes</Heading>
+      <Text>The page is steady again.</Text>
+      <Button variant="ghost" onClick={() => setSlipped(true)}>Slip</Button>
+    </Stack>
+  )
+}
+`
+}
+
 const VIEW = `import { Heading, Stack, Text } from '@slop/sdk'
 
 export default function View({ params, context }: { params?: Record<string, unknown>; context?: unknown }) {
@@ -91,6 +128,19 @@ export default function View({ params, context }: { params?: Record<string, unkn
 function wantsBroken(prompt: string): boolean {
   if (/compile attempt|failed to compile|previous file failed/i.test(prompt)) return false
   return /\bbroken\b/i.test(prompt)
+}
+
+function wantsCrashy(prompt: string): boolean {
+  if (/Kind:\s*fix\b/i.test(prompt)) return false
+  if (/compile attempt|failed to compile|previous file failed/i.test(prompt)) return false
+  return /\bcrashy\b/i.test(prompt)
+}
+
+async function repairingCrash(cwd: string, prompt: string): Promise<boolean> {
+  if (!/Kind:\s*fix\b/i.test(prompt)) return false
+  if (/\bcrashy\b|counter slipped|slop-crashy/i.test(prompt)) return true
+  const existing = await fs.readFile(path.join(cwd, 'App.tsx'), 'utf8').catch(() => '')
+  return /slop-crashy|The counter slipped/.test(existing)
 }
 
 function fillSchema(schema: Record<string, unknown> | undefined): unknown {
@@ -123,12 +173,18 @@ async function writeApp(cwd: string, prompt: string): Promise<void> {
   const edited = /Kind:\s*edit/i.test(prompt)
   const mark = edited ? 'v2' : 'v1'
   const timer = /pomodoro|\btimer\b/i.test(prompt)
-  const source = wantsBroken(prompt) ? BROKEN : timer ? pomodoro(mark) : todo(mark)
-  const meta = timer
-    ? manifest('Pomodoro', 'Timer', 'A calm timer for one focused stretch.')
-    : manifest('To-dos', 'ListTodo', 'A short list of what is left to do.')
+  const crashy = wantsCrashy(prompt)
+  const repair = await repairingCrash(cwd, prompt)
+  const source = wantsBroken(prompt) ? BROKEN : crashy ? crashyApp() : repair ? steadyApp() : timer ? pomodoro(mark) : todo(mark)
+  const meta =
+    crashy || repair
+      ? manifest('Notes', 'StickyNote', 'A short page that stays on the desk.')
+      : timer
+        ? manifest('Pomodoro', 'Timer', 'A calm timer for one focused stretch.')
+        : manifest('To-dos', 'ListTodo', 'A short list of what is left to do.')
+  const shapes = crashy || repair ? [] : timer ? ['left', 'running'] : ['items']
   const world = {
-    summary: { purpose: meta.description, dataShapes: timer ? ['left', 'running'] : ['items'] },
+    summary: { purpose: meta.description, dataShapes: shapes },
     entities: [],
   }
   await fs.mkdir(cwd, { recursive: true })
