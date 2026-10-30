@@ -1210,6 +1210,18 @@ button.shell-drawer-app > span:not(.shell-tile) {
   overflow: auto;
 }
 
+.shell-spot-group {
+  margin: 6px 10px 0;
+  font-size: var(--slop-text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slop-fg-subtle);
+}
+
+.shell-spot-group:first-child {
+  margin-top: 2px;
+}
+
 .shell-spot-row {
   width: 100%;
   min-height: 48px;
@@ -1393,6 +1405,56 @@ button.shell-drawer-app > span:not(.shell-tile) {
   color: var(--slop-fg);
 }
 
+.shell-shortcuts {
+  width: min(440px, calc(100% - 32px));
+  text-align: left;
+  padding: 22px 22px 18px;
+}
+
+.shell-shortcuts h1 {
+  text-align: center;
+  font-family: var(--slop-font-display);
+  font-weight: 520;
+}
+
+.shell-shortcuts .line {
+  text-align: center;
+  margin: 8px 0 14px;
+  font-size: var(--slop-text-sm);
+}
+
+.shell-key-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shell-key-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--slop-border);
+}
+
+.shell-key-list kbd {
+  flex: none;
+  font-family: var(--slop-font-mono);
+  font-size: var(--slop-text-xs);
+  color: var(--slop-fg);
+  background: var(--slop-bg-sunken);
+  border: 1px solid var(--slop-border);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.shell-shortcuts-done {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
 .shell-confirm-backdrop {
   position: absolute;
   inset: 0;
@@ -1545,4 +1607,45 @@ button.shell-drawer-app > span:not(.shell-tile) {
     animation: none;
     transition: none;
   }
+}
+
+/* Dark: accent-on-tint falls under 3:1, and glass edges vanish into the wallpaper. */
+[data-theme='dark'] .shell-menu-item.is-active:not(:disabled):not(.is-danger) {
+  background: rgba(255, 122, 77, 0.28);
+  color: var(--slop-fg);
+}
+
+[data-theme='dark'] .shell-spot-row.is-active:not(:disabled) {
+  background: rgba(255, 122, 77, 0.28);
+  color: var(--slop-fg);
+}
+
+[data-theme='dark'] .shell-spot-row.is-active .shell-spot-copy em,
+[data-theme='dark'] .shell-spot-row.is-active .shell-spot-hint {
+  color: var(--slop-fg);
+  opacity: 0.82;
+}
+
+[data-theme='dark'] .shell-drawer-search input::placeholder,
+[data-theme='dark'] .shell-drawer-compose input::placeholder,
+[data-theme='dark'] .shell-spotlight-input input::placeholder {
+  color: var(--slop-fg-muted);
+}
+
+[data-theme='dark'] .shell-spot-group,
+[data-theme='dark'] .shell-spot-hint {
+  color: var(--slop-fg-muted);
+}
+
+[data-theme='dark'] .shell-menu-pop,
+[data-theme='dark'] .shell-spotlight,
+[data-theme='dark'] .shell-toast,
+[data-theme='dark'] .shell-drawer-search,
+[data-theme='dark'] .shell-calendar {
+  background: rgba(42, 38, 35, 0.94);
+  border-color: rgba(255, 248, 240, 0.18);
+}
+
+[data-theme='dark'] .shell-dock {
+  border-color: rgba(255, 248, 240, 0.18);
 }

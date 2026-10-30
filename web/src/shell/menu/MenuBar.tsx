@@ -31,6 +31,7 @@ export function MenuBar() {
   const setAccent = useShell((state) => state.setAccent)
   const setWallpaper = useShell((state) => state.setWallpaper)
   const setAboutOpen = useShell((state) => state.setAboutOpen)
+  const setShortcutsOpen = useShell((state) => state.setShortcutsOpen)
   const setDrawerOpen = useShell((state) => state.setDrawerOpen)
   const setSpotlightOpen = useShell((state) => state.setSpotlightOpen)
   const setShellPrompt = useShell((state) => state.setShellPrompt)
@@ -67,6 +68,7 @@ export function MenuBar() {
 
   const logoItems: MenuNode[] = [
     { type: 'item', label: 'About slopOS', onSelect: () => setAboutOpen(true) },
+    { type: 'item', label: 'Keyboard Shortcuts', shortcut: 'Ctrl+/', onSelect: () => setShortcutsOpen(true) },
     { type: 'sep' },
     {
       type: 'sub',

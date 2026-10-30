@@ -5,6 +5,7 @@ import { providerLabel, useGrokStatus } from './generation'
 import { Dock } from './dock/Dock'
 import { ShellDialogs } from './dialogs/Dialogs'
 import { AboutDialog } from './menu/AboutDialog'
+import { ShortcutsDialog } from './menu/ShortcutsDialog'
 import { Drawer } from './drawer'
 import { Invite } from './empty/Invite'
 import { MenuBar } from './menu/MenuBar'
@@ -86,6 +87,7 @@ export function Desktop() {
       <Spotlight />
       <Drawer />
       <AboutDialog />
+      <ShortcutsDialog />
       <ShellDialogs />
       <Welcome />
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={items} onClose={() => setMenu(null)} /> : null}

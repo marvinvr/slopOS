@@ -8,9 +8,13 @@ import { AppTile } from '../icons'
 import { pushLayer } from '../layers'
 import { useShell } from '../store'
 import type { AppManifest } from '../types'
+import { loadWorld, openPlace, openThing, type WorldEntity, type WorldIndex, type WorldView } from './world'
 
 type Row =
+  | { kind: 'group'; id: string; title: string }
   | { kind: 'app'; id: string; title: string; subtitle?: string; good: boolean; app: AppManifest }
+  | { kind: 'place'; id: string; title: string; subtitle?: string; good: boolean; appId: string; view: WorldView }
+  | { kind: 'thing'; id: string; title: string; subtitle?: string; good: boolean; entity: WorldEntity; owned: boolean }
   | { kind: 'action'; id: string; title: string; good: boolean; run: () => void }
   | { kind: 'create'; title: string; disabled: boolean; reason?: string }
 
@@ -25,18 +29,26 @@ export function Spotlight() {
   const provider = providerLabel(grok.provider)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
+  const [world, setWorld] = useState<WorldIndex>({ views: [], entities: [] })
   const inputRef = useRef<HTMLInputElement>(null)
 
   const rows = useMemo(
-    () => buildRows(apps, query, grok.available, grok.reason, provider, { setDrawerOpen, closeAllWindows }),
-    [apps, query, grok.available, grok.reason, provider, setDrawerOpen, closeAllWindows],
+    () => buildRows(apps, world, query, grok.available, grok.reason, provider, { setDrawerOpen, closeAllWindows }),
+    [apps, world, query, grok.available, grok.reason, provider, setDrawerOpen, closeAllWindows],
   )
 
   useEffect(() => {
     if (!open) return
     setQuery('')
+    let cancel = false
+    void loadWorld().then((index) => {
+      if (!cancel) setWorld(index)
+    })
     const timer = window.setTimeout(() => inputRef.current?.focus(), 30)
-    return () => window.clearTimeout(timer)
+    return () => {
+      cancel = true
+      window.clearTimeout(timer)
+    }
   }, [open])
 
   useEffect(() => {
@@ -53,8 +65,19 @@ export function Spotlight() {
   function activate(index: number) {
     const row = rows[index]
     if (!row) return
+    if (row.kind === 'group') return
     if (row.kind === 'app') {
       openApp(row.app.id)
+      close(false)
+      return
+    }
+    if (row.kind === 'place') {
+      openPlace(row.appId, row.view)
+      close(false)
+      return
+    }
+    if (row.kind === 'thing') {
+      openThing(row.entity)
       close(false)
       return
     }
@@ -72,10 +95,7 @@ export function Spotlight() {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       const delta = event.key === 'ArrowDown' ? 1 : -1
-      setActive((current) => {
-        if (!rows.length) return 0
-        return (current + delta + rows.length) % rows.length
-      })
+      setActive((current) => stepRow(rows, current, delta))
       return
     }
     if (event.key === 'Enter') {
@@ -92,7 +112,7 @@ export function Spotlight() {
           <input
             ref={inputRef}
             value={query}
-            placeholder="Search, or describe an app"
+            placeholder="Search the world, or describe an app"
             aria-label="Search"
             spellCheck={false}
             autoComplete="off"
@@ -101,32 +121,40 @@ export function Spotlight() {
         </div>
         {rows.length ? (
           <div className="shell-spotlight-list" role="listbox">
-            {rows.map((row, index) => (
-              <button
-                key={row.kind === 'create' ? 'create' : row.id}
-                type="button"
-                role="option"
-                aria-selected={index === active}
-                aria-disabled={row.kind === 'create' && row.disabled}
-                data-app-id={row.kind === 'app' ? row.app.id : undefined}
-                className={cx('shell-spot-row', index === active && 'is-active', row.kind === 'create' && row.disabled && 'is-disabled')}
-                onMouseEnter={() => setActive(index)}
-                onClick={() => activate(index)}
-              >
-                {row.kind === 'app' ? (
-                  <AppTile id={row.app.id} icon={row.app.icon} tint={row.app.tint} size={32} />
-                ) : (
-                  <span className={cx('shell-spot-glyph', row.kind === 'create' && 'is-create')}>
-                    <Icon name={row.kind === 'create' ? 'Sparkles' : 'Command'} size={16} />
+            {rows.map((row, index) =>
+              row.kind === 'group' ? (
+                <div key={row.id} className="shell-spot-group" role="presentation">
+                  {row.title}
+                </div>
+              ) : (
+                <button
+                  key={row.kind === 'create' ? 'create' : row.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === active}
+                  aria-disabled={row.kind === 'create' && row.disabled}
+                  data-app-id={row.kind === 'app' ? row.app.id : row.kind === 'place' ? row.appId : undefined}
+                  data-view-id={row.kind === 'place' ? row.view.viewId : undefined}
+                  data-entity={row.kind === 'thing' ? row.entity.name : undefined}
+                  className={cx('shell-spot-row', index === active && 'is-active', row.kind === 'create' && row.disabled && 'is-disabled')}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => activate(index)}
+                >
+                  {row.kind === 'app' ? (
+                    <AppTile id={row.app.id} icon={row.app.icon} tint={row.app.tint} size={32} />
+                  ) : (
+                    <span className={cx('shell-spot-glyph', row.kind === 'create' && 'is-create')}>
+                      <Icon name={glyphFor(row.kind)} size={16} />
+                    </span>
+                  )}
+                  <span className="shell-spot-copy">
+                    <strong>{row.title}</strong>
+                    {'subtitle' in row && row.subtitle ? <em>{row.subtitle}</em> : null}
                   </span>
-                )}
-                <span className="shell-spot-copy">
-                  <strong>{row.title}</strong>
-                  {row.kind === 'app' && row.subtitle ? <em>{row.subtitle}</em> : null}
-                </span>
-                <span className="shell-spot-hint">{row.kind === 'app' ? 'Open' : row.kind === 'create' && row.disabled ? row.reason : ''}</span>
-              </button>
-            ))}
+                  <span className="shell-spot-hint">{hintFor(row)}</span>
+                </button>
+              ),
+            )}
           </div>
         ) : (
           <p className="shell-spot-empty">
@@ -138,8 +166,33 @@ export function Spotlight() {
   )
 }
 
+function glyphFor(kind: Row['kind']): string {
+  if (kind === 'place') return 'Map'
+  if (kind === 'thing') return 'Box'
+  if (kind === 'create') return 'Sparkles'
+  return 'Command'
+}
+
+function hintFor(row: Row): string {
+  if (row.kind === 'app' || row.kind === 'place') return 'Open'
+  if (row.kind === 'thing') return row.owned ? 'Open' : 'Ask'
+  if (row.kind === 'create' && row.disabled) return row.reason || ''
+  return ''
+}
+
+function stepRow(rows: Row[], current: number, delta: number): number {
+  if (!rows.length) return 0
+  let index = current
+  for (let n = 0; n < rows.length; n++) {
+    index = (index + delta + rows.length) % rows.length
+    if (rows[index]?.kind !== 'group') return index
+  }
+  return current
+}
+
 function buildRows(
   apps: AppManifest[],
+  world: WorldIndex,
   query: string,
   grokOk: boolean,
   reason: string | undefined,
@@ -147,11 +200,11 @@ function buildRows(
   actions: { setDrawerOpen: (open: boolean) => void; closeAllWindows: () => void },
 ): Row[] {
   const q = query.trim()
+  const names = new Map(apps.map((app) => [app.id, app.name]))
   const ranked = apps
     .map((app) => ({ app, score: scoreApp(q, app.name, app.description) }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.app.name.localeCompare(b.app.name))
-    .slice(0, 8)
   const appRows: Row[] = ranked.map((item) => ({
     kind: 'app',
     id: item.app.id,
@@ -160,6 +213,46 @@ function buildRows(
     good: !q || item.score >= GOOD_MATCH,
     app: item.app,
   }))
+
+  const placeRows: Row[] = q
+    ? world.views
+        .map((view) => {
+          const appName = names.get(view.appId) || view.appId
+          const title = view.title?.trim() || view.intent
+          const score = Math.max(scoreText(q, title), scoreText(q, view.intent) * 0.85, scoreText(q, appName) * 0.4)
+          return { view, appName, title, score }
+        })
+        .filter((item) => item.score > 0 && names.has(item.view.appId))
+        .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+        .map((item) => ({
+          kind: 'place' as const,
+          id: `${item.view.appId}:${item.view.viewId}`,
+          title: `${item.title} — in ${item.appName}`,
+          subtitle: item.view.intent !== item.title ? item.view.intent : undefined,
+          good: item.score >= GOOD_MATCH,
+          appId: item.view.appId,
+          view: item.view,
+        }))
+    : []
+
+  const thingRows: Row[] = q
+    ? world.entities
+        .map((entity) => {
+          const score = Math.max(scoreText(q, entity.name), scoreText(q, entity.kind || '') * 0.5, scoreText(q, entity.description || '') * 0.45)
+          return { entity, score }
+        })
+        .filter((item) => item.score > 0 && item.entity.name.trim())
+        .sort((a, b) => b.score - a.score || a.entity.name.localeCompare(b.entity.name))
+        .map((item) => ({
+          kind: 'thing' as const,
+          id: `entity:${item.entity.appId || ''}:${item.entity.name}`,
+          title: item.entity.name,
+          subtitle: item.entity.description || item.entity.kind || undefined,
+          good: item.score >= GOOD_MATCH,
+          entity: item.entity,
+          owned: Boolean(item.entity.appId && names.has(item.entity.appId)),
+        }))
+    : []
 
   const actionDefs = [
     { id: 'dark', title: 'Toggle dark mode', run: toggleDarkMode },
@@ -180,8 +273,15 @@ function buildRows(
         }))
     : []
 
-  const matchedWell = appRows.some((row) => row.kind === 'app' && row.good) || actionRows.some((row) => row.kind === 'action' && row.good)
+  const matchedWell = [...appRows, ...placeRows, ...thingRows, ...actionRows].some((row) => 'good' in row && row.good)
   const showCreate = q.length >= 3 || (q.length > 0 && !matchedWell)
+  const [appsTaken, placesTaken, thingsTaken, actionsTaken] = fill([appRows, placeRows, thingRows, actionRows], showCreate ? 7 : 8)
+  const body = [
+    ...grouped('Apps', appsTaken),
+    ...grouped('Places', placesTaken),
+    ...grouped('Things', thingsTaken),
+    ...actionsTaken,
+  ]
   const create: Row | null = showCreate
     ? {
         kind: 'create',
@@ -191,15 +291,38 @@ function buildRows(
       }
     : null
 
-  return create ? [...appRows, ...actionRows, create] : [...appRows, ...actionRows]
+  return create ? [...body, create] : body
+}
+
+function grouped(title: string, rows: Row[]): Row[] {
+  if (!rows.length) return []
+  return [{ kind: 'group', id: `group:${title}`, title }, ...rows]
+}
+
+/** Keep the list to about eight selectable rows, without one group swallowing the rest. */
+function fill(sources: Row[][], max: number): Row[][] {
+  const soft = [4, 3, 3, 2]
+  const out = sources.map(() => [] as Row[])
+  let left = max
+  sources.forEach((source, index) => {
+    const count = Math.min(source.length, soft[index] ?? 2, left)
+    out[index] = source.slice(0, count)
+    left -= count
+  })
+  sources.forEach((source, index) => {
+    if (left <= 0) return
+    const more = Math.min(source.length - out[index].length, left)
+    out[index] = source.slice(0, out[index].length + more)
+    left -= more
+  })
+  return out
 }
 
 function preferredIndex(rows: Row[]): number {
-  const goodApp = rows.findIndex((row) => row.kind === 'app' && row.good)
-  if (goodApp >= 0) return goodApp
-  const goodAction = rows.findIndex((row) => row.kind === 'action' && row.good)
-  if (goodAction >= 0) return goodAction
+  const good = rows.findIndex((row) => row.kind !== 'group' && row.kind !== 'create' && 'good' in row && row.good)
+  if (good >= 0) return good
   const create = rows.findIndex((row) => row.kind === 'create')
   if (create >= 0) return create
-  return 0
+  const first = rows.findIndex((row) => row.kind !== 'group')
+  return first >= 0 ? first : 0
 }

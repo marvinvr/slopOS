@@ -137,7 +137,7 @@ button.shell-status-icon.shell-gen {
 
 .gen-panel {
   position: fixed;
-  top: 48px;
+  top: calc(36px + var(--slop-toast-stack, 0px) + 12px);
   right: 16px;
   width: min(380px, calc(100vw - 32px));
   padding: 14px 16px 16px;
@@ -146,6 +146,11 @@ button.shell-status-icon.shell-gen {
   border: 1px solid var(--slop-border);
   box-shadow: var(--slop-shadow-lg);
   z-index: 45;
+}
+
+[data-theme='dark'] .gen-panel {
+  background: #302c29;
+  border-color: rgba(255, 248, 240, 0.18);
 }
 
 .gen-panel-bar {

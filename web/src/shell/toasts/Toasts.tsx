@@ -7,8 +7,25 @@ const LIFE = 4600
 export function Toasts() {
   const toasts = useShell((state) => state.toasts)
   const dismiss = useShell((state) => state.dismissToast)
+  const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const apply = () => {
+      document.documentElement.style.setProperty('--slop-toast-stack', `${Math.ceil(el.getBoundingClientRect().height)}px`)
+    }
+    apply()
+    const observer = new ResizeObserver(apply)
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--slop-toast-stack')
+    }
+  }, [])
+
   return (
-    <div className="shell-toasts" aria-live="polite">
+    <div className="shell-toasts" ref={box} aria-live="polite">
       {toasts.map((toast) => (
         <ToastView key={toast.id} id={toast.id} title={toast.title} body={toast.body} appId={toast.appId} onDone={() => dismiss(toast.id)} />
       ))}

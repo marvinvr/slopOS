@@ -33,7 +33,14 @@ export function isDrawerChord(event: ShortcutEvent): boolean {
   return event.key.toLowerCase() === 'a' || event.code === 'KeyA'
 }
 
+export function isShortcutsChord(event: ShortcutEvent): boolean {
+  if (event.altKey || event.shiftKey) return false
+  if (!(event.metaKey || event.ctrlKey)) return false
+  return event.key === '/' || event.code === 'Slash'
+}
+
 export function isShellShortcut(event: ShortcutEvent): boolean {
+  if (isShortcutsChord(event)) return true
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return false
   const key = event.key.toLowerCase()
   return key === 'w' || key === 'm' || key === 'k' || key === ' ' || event.code === 'Space' || event.key === '`' || event.code === 'Backquote'
@@ -73,6 +80,12 @@ export function runShortcut(event: ShortcutEvent): void {
     const next = !shell.drawerOpen
     dismissAll()
     shell.setDrawerOpen(next)
+    return
+  }
+  if (isShortcutsChord(event)) {
+    const open = shell.shortcutsOpen
+    dismissAll()
+    shell.setShortcutsOpen(!open)
     return
   }
   dismissAll()
