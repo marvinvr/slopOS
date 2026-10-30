@@ -108,7 +108,7 @@ The full contract, written for an LLM author, is [`docs/APP_SDK.md`](docs/APP_SD
 ## Good to know
 
 - **Generation takes a while.** With Grok on medium effort a new app takes about 2–4 minutes and a generated screen about 1–2 minutes. Codex and Claude are much faster (roughly 10–60 seconds). Lower effort (`SLOPOS_GROK_EFFORT=low`) cuts Grok to well under two minutes. slopOS shows live progress, and everything is cached once generated.
-- **Generated code runs sandboxed** in an iframe without same-origin access and talks to the shell only through `postMessage`. Network access goes through the server's `slopFetch` proxy.
+- **Generated code runs sandboxed** in an iframe without same-origin access and talks to the shell only through `postMessage`. A Content-Security-Policy keeps them on slopOS itself: network access goes through the server's `slopFetch` proxy.
 - **One world per server.** Everything lives in `data/` (or `SLOPOS_DATA_DIR`). Back that folder up to keep your world, or use Reset slopOS to start over.
 
 ## Keyboard
