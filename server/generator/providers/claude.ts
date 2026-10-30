@@ -4,6 +4,7 @@ import { childEnv } from '../child-env'
 import { isInside } from '../safe-path'
 import { loadSession, saveSession } from '../sessions'
 import type { Availability, GenEvent, GeneratorProvider, RunOptions } from '../types'
+import { FILE_SYSTEM_PROMPT, JSON_SESSION_RULES } from '../prompts'
 import { capture, memoAvailability, publicError } from './util'
 
 const FILE_TOOLS = ['Read', 'Write', 'Edit']
@@ -87,6 +88,11 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
       allowedTools: tools,
       disallowedTools: ['Bash', 'PowerShell', 'WebSearch', 'WebFetch', 'Task', 'Agent', 'Skill', 'NotebookEdit', 'TodoWrite'],
       permissionMode: 'dontAsk',
+      systemPrompt: {
+        type: 'preset',
+        preset: 'claude_code',
+        append: opts.kind === 'content' || opts.kind === 'route' ? JSON_SESSION_RULES : FILE_SYSTEM_PROMPT,
+      },
       settingSources: [],
       mcpServers: {},
       pathToClaudeCodeExecutable: binFor('claude'),

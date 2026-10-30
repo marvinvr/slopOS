@@ -13,7 +13,7 @@ import { getProvider } from './providers/load'
 import { cancelAll, dropJobs, enqueue, flushPersist, jobForKey, silenceJobs, type JobContext } from './queue'
 import { runProvider } from './runner'
 import { parseJsonText, ROUTE_SCHEMA, validateJson } from './schema'
-import { clearSessions } from './sessions'
+import { clearSessions, loadSession } from './sessions'
 import { GeneratorError, type GenKind, type GenResult, type SseEvent } from './types'
 import { cacheKeyOf, getCached, mergeDelta, putCached, rememberLog, rememberView, viewsFor, worldDigest, type WorldDelta } from './world'
 
@@ -339,28 +339,47 @@ async function generateSource(
   let sessionId: string | undefined
   let errors: CompileError[] = []
   const fileNames = request.kind === 'view' ? ['View.tsx', 'view.tsx'] : ['App.tsx', 'app.tsx']
+  // A view reuses the app session when that session is still the one we would load, and then
+  // does not resend the SDK. A missing session starts fresh with the digest in the prompt.
+  const provider = await getProvider()
+  const settings = settingsFor(provider.id, request.kind)
+  const saved = request.kind === 'view' ? await loadSession(`app:${request.appId}`) : null
+  const warmView = Boolean(
+    saved &&
+      saved.model === settings.model &&
+      saved.effort === settings.effort &&
+      path.resolve(saved.cwd) === path.resolve(cwd),
+  )
   for (let attempt = 1; attempt <= 3; attempt++) {
     if (ctx.signal.aborted) throw new GeneratorError('Cancelled')
     if (attempt > 1) {
       ctx.emit({ type: 'status', step: 'fixing', text: `Fixing compile error (attempt ${attempt}/3)` })
     }
+    const failedSource = attempt > 1 ? await persist.readWorkspace(request.appId, fileNames) : null
+    const errorText = [
+      errors.length ? errors.map(formatError).join('\n') : request.errorText || '',
+      request.kind === 'view' && failedSource ? `Previous View.tsx (inlined; write the corrected file once):\n${failedSource}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
     const built = await buildPrompt({
       kind: request.kind,
       mode: request.mode,
       intent: request.intent,
       appId: request.appId,
       appName: request.appName,
-      errorText: errors.length ? errors.map(formatError).join('\n') : request.errorText,
+      errorText: errorText || undefined,
       attempt,
+      currentSource: request.kind === 'view' ? request.currentSource : failedSource || request.currentSource,
+      omitSdk: warmView && attempt === 1,
     })
-    await persist.writeWorkspace(request.appId, { 'TASK.md': built.task, 'APP_SDK.md': built.sdk })
     const turn = await drive(ctx, {
       prompt: built.prompt,
       cwd,
       kind: request.kind,
       resumeSessionId: sessionId,
-      freshSession: attempt === 1 ? request.freshSession : false,
-      sessionKey: `app:${request.appId}`,
+      freshSession: attempt === 1 ? Boolean(request.freshSession) || (request.kind === 'view' && !warmView) : false,
+      sessionKey: request.kind === 'view' && !warmView ? undefined : `app:${request.appId}`,
     })
     sessionId = turn.sessionId || sessionId
     ctx.emit({ type: 'status', step: 'compiling', text: 'Compiling' })

@@ -5,6 +5,7 @@ import path from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { client, methods, ndJsonStream, PROTOCOL_VERSION, RequestError, type ClientConnection, type SessionConfigOption, type SessionUpdate } from '@agentclientprotocol/sdk'
 import { binFor, looksLikeAuth, settingsFor, signedOutReason } from '../config'
+import { FILE_SYSTEM_PROMPT, JSON_SESSION_RULES } from '../prompts'
 import { childEnv } from '../child-env'
 import { loadSession, saveSession } from '../sessions'
 import { allowWorkspaceTool, resolveInside } from '../safe-path'
@@ -143,6 +144,11 @@ async function startPool(key: string, model: string, effort: string): Promise<Li
   }
 }
 
+/** Grok's own system prompt tells it to verify with tools. Replace that on session/new so a file turn writes once and stops. */
+function sessionMeta(mode: Mode): Record<string, string> {
+  return { systemPromptOverride: mode === 'none' ? JSON_SESSION_RULES : FILE_SYSTEM_PROMPT }
+}
+
 function workspaceOf(live: Live | undefined, sessionId: string): string | null {
   return live?.sessions.get(sessionId)?.cwd ?? null
 }
@@ -264,7 +270,11 @@ async function openSession(live: Live, opts: RunOptions, restarted: boolean): Pr
     }
   }
   if (!sessionId) {
-    const created = await live.connection.agent.request(methods.agent.session.new, { cwd, mcpServers: [] })
+    const created = await live.connection.agent.request(methods.agent.session.new, {
+      cwd,
+      mcpServers: [],
+      _meta: sessionMeta(mode),
+    })
     sessionId = created.sessionId
     advertised = created.configOptions
   }
