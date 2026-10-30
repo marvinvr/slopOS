@@ -43,10 +43,12 @@ export function reportError(message: string, stack?: string): void {
 
 /** Shortcuts the frame must hand to the shell. Ctrl works even when the browser eats Cmd. */
 export function isForwardedShortcut(event: KeyboardEvent): boolean {
-  if (event.altKey) return false
   const key = event.key.toLowerCase()
   const mod = event.metaKey || event.ctrlKey
   if (!mod) return false
+  // Snap chords are Ctrl/Cmd+Alt+arrows. Checked before the alt bail-out.
+  if (event.altKey && !event.shiftKey && (event.key.startsWith('Arrow') || event.code.startsWith('Arrow'))) return true
+  if (event.altKey) return false
   // Full screen: Shift+F, and Ctrl+Cmd+F when the browser delivers it.
   if (key === 'f' && (event.shiftKey || (event.metaKey && event.ctrlKey))) return true
   // App drawer. Checked before the shift bail-out below.

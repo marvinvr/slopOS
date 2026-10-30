@@ -2,7 +2,7 @@ import { useEffect, type RefObject } from 'react'
 import { SLOP_PROTOCOL, type SlopMessage, type WireMenu } from '../../../../runtime/protocol'
 import { routeActionMessage } from './actions'
 import { routeGenMessage } from './gen'
-import { runShortcut } from '../shortcuts'
+import { releaseModifier, runShortcut } from '../shortcuts'
 import { useShell, type Win } from '../store'
 
 export function useWindowBridge(win: Win, iframeRef: RefObject<HTMLIFrameElement | null>): void {
@@ -119,6 +119,9 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
         altKey: Boolean(payload.altKey),
         repeat: Boolean(payload.repeat),
       })
+      break
+    case 'keyup':
+      releaseModifier(String(payload.key ?? ''))
       break
     case 'storage.get': {
       const key = String(payload.key ?? '')

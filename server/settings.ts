@@ -14,6 +14,8 @@ export type SavedWindow = {
   height: number
   minimized: boolean
   maximized: boolean
+  /** Left or right half. Maximized windows leave this null. */
+  snap: 'left' | 'right' | null
   z: number
   restore: SavedRect | null
   screens: PersistedScreen[]
@@ -92,6 +94,7 @@ function normalizeWindow(raw: unknown): SavedWindow | null {
     height: finite(raw.height, 480),
     minimized: Boolean(raw.minimized),
     maximized: Boolean(raw.maximized),
+    snap: raw.snap === 'left' || raw.snap === 'right' ? raw.snap : null,
     z: finite(raw.z, 1),
     restore: normalizeRect(raw.restore),
     screens: normalizeScreens(raw.screens),
