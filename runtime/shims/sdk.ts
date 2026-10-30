@@ -3,6 +3,7 @@ export {
   useWindow,
   useTheme,
   useStorage,
+  useAppData,
   storage,
   notify,
   slopFetch,

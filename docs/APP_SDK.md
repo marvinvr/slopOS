@@ -146,6 +146,12 @@ await storage.remove('notes')
 await storage.keys()
 ```
 
+`useAppData` reads another app’s store. It cannot write. Each app still persists only its own keys. `undefined` once `loaded` is true means that id or key is missing.
+
+```tsx
+const [recipes, { loaded }] = useAppData<Recipe[]>('recipe-box', 'recipes')
+```
+
 ```tsx
 notify('Saved', 'Your note is on the desk.')  // shell toast; body optional
 const { mode, accent } = useTheme()           // mode is 'light' | 'dark'

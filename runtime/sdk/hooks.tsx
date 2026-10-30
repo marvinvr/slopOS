@@ -41,6 +41,39 @@ export const storage = {
   },
 }
 
+/** Read another app’s storage. Never writes. `undefined` when the id or key is missing. */
+export function useAppData<T>(appId: string, key: string): [T | undefined, { loaded: boolean }] {
+  const [value, setValue] = useState<T | undefined>(undefined)
+  const [loadedToken, setLoadedToken] = useState<string | null>(null)
+  const token = `${appId}\0${key}`
+
+  useEffect(() => {
+    let cancel = false
+    if (!appId || !key) {
+      setValue(undefined)
+      setLoadedToken(token)
+      return
+    }
+    rpc<StorageReply>('storage.read', { appId, key })
+      .then((reply) => {
+        if (cancel) return
+        setValue(reply.found === false ? undefined : (reply.value as T | undefined))
+        setLoadedToken(token)
+      })
+      .catch(() => {
+        if (!cancel) {
+          setValue(undefined)
+          setLoadedToken(token)
+        }
+      })
+    return () => {
+      cancel = true
+    }
+  }, [appId, key, token])
+
+  return [value, { loaded: loadedToken === token }]
+}
+
 export function useStorage<T>(key: string, initial: T): [T, (value: T | ((prev: T) => T)) => void, { loaded: boolean }] {
   const [value, setValue] = useState<T>(initial)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)

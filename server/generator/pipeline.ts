@@ -15,7 +15,7 @@ import { runProvider } from './runner'
 import { parseJsonText, ROUTE_SCHEMA, validateJson } from './schema'
 import { clearSessions, loadSession } from './sessions'
 import { GeneratorError, type GenKind, type GenResult, type SseEvent } from './types'
-import { cacheKeyOf, getCached, mergeDelta, putCached, rememberLog, rememberView, viewsFor, worldDigest, type WorldDelta } from './world'
+import { cacheKeyOf, getCached, mergeDelta, putCached, rememberLog, rememberView, viewsFor, worldDigest, worldSnapshot, type WorldDelta } from './world'
 
 type GenBody = {
   appId?: string
@@ -568,8 +568,9 @@ function formatError(error: CompileError): string {
 export async function matchExisting(intent: string): Promise<string | null> {
   const needle = intent.trim().toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
   if (needle.length < 2) return null
-  const apps = await listApps()
-  const scored = apps.map((app) => ({ id: app.id, score: scoreApp(needle, app.name, app.description || '') }))
+  const [apps, world] = await Promise.all([listApps(), worldSnapshot()])
+  const shapes = new Map(world.apps.map((app) => [app.id, app.dataShapes]))
+  const scored = apps.map((app) => ({ id: app.id, score: scoreApp(needle, app.name, app.description || '', shapes.get(app.id) || []) }))
   scored.sort((a, b) => b.score - a.score)
   const best = scored[0]
   if (!best || best.score < 80) return null
@@ -578,15 +579,25 @@ export async function matchExisting(intent: string): Promise<string | null> {
   return best.id
 }
 
-function scoreApp(intent: string, name: string, description: string): number {
+function scoreApp(intent: string, name: string, description: string, shapes: string[]): number {
   const normalized = name.toLowerCase().trim()
   if (intent === normalized) return 100
+  if (shapes.some((shape) => sameStore(intent, shape))) return 92
   const nameWords = normalized.split(/[^a-z0-9]+/).filter((word) => word.length > 2)
   if (!nameWords.length) return 0
   const intentWords = new Set(intent.split(' ').filter((word) => word.length > 2))
   if (nameWords.every((word) => intentWords.has(word)) && intent.length <= normalized.length + 24) return 80
   if (description.toLowerCase().includes(intent) && intent.length > 8) return 60
   return 0
+}
+
+/** A single-word intent that is exactly another app’s storage key, plus a trailing s. */
+function sameStore(intent: string, shape: string): boolean {
+  const key = shape.trim().toLowerCase()
+  if (key.length < 4) return false
+  if (intent === key) return true
+  if (intent.includes(' ')) return false
+  return intent + 's' === key || intent + 'es' === key || key + 's' === intent || key + 'es' === intent
 }
 
 async function scratchDir(key: string): Promise<string> {

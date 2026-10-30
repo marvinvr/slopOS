@@ -1,5 +1,5 @@
 export { bootFrame } from './boot'
-export { useWindow, useTheme, useStorage, storage, notify, slopFetch, useMenu, useInterval, useHotkey, openApp, clipboard, download } from './hooks'
+export { useWindow, useTheme, useStorage, useAppData, storage, notify, slopFetch, useMenu, useInterval, useHotkey, openApp, clipboard, download } from './hooks'
 export { confirm } from './confirm'
 export { useNow, formatters } from './format'
 export { generate, useGenerated, GenerativeView, openGenerative, useGenContext, useScreens } from './world'
