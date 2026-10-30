@@ -47,16 +47,21 @@ export function Window({ win }: { win: Win }) {
   const screenKey = `${win.appId}:${screenId}:${win.version}`
   if (theme.current.screen !== screenKey) theme.current = { mode, accent, screen: screenKey }
   const src = `/api/apps/${encodeURIComponent(win.appId)}/screens/${encodeURIComponent(screenId)}?v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}&theme=${theme.current.mode}&accent=${encodeURIComponent(theme.current.accent)}`
+  // The painted frame. A new screen loads hidden on top of it and takes over once it has painted, so nothing blanks in between.
+  const [shown, setShown] = useState<string | null>(null)
+  const srcRef = useRef(src)
+  srcRef.current = src
   const [bootSrc, setBootSrc] = useState(src)
+  // The first paint of a window (and the first after a rebuild) lifts a placeholder; later screens just swap.
   const [boot, setBoot] = useState<'in' | 'out' | 'off'>('in')
   // Once a window has shown the placeholder, it stays up until the screen paints, so the swap is one fade.
   const [placeheld, setPlaceheld] = useState(pending)
   if (bootSrc !== src) {
     setBootSrc(src)
-    setBoot('in')
-    setPlaceheld(true)
+    if (placeheld || !shown) setBoot('in')
   } else if (building && !placeheld) setPlaceheld(true)
   else if (placeheld && !building && boot === 'off') setPlaceheld(false)
+  const swapping = Boolean(shown && shown !== src)
 
   useEffect(() => {
     if (!stale || build) return
@@ -76,6 +81,7 @@ export function Window({ win }: { win: Win }) {
       if (!frame || event.source !== frame) return
       const data = event.data as { slop?: unknown; type?: string } | null
       if (!data || data.slop !== SLOP_PROTOCOL || data.type !== 'ready') return
+      setShown(srcRef.current)
       setBoot((current) => (current === 'in' ? 'out' : current))
     }
     window.addEventListener('message', onMessage)
@@ -313,23 +319,43 @@ export function Window({ win }: { win: Win }) {
         <header className={cx('shell-screen-bar', waiting && 'is-loading')}>
           <IconButton icon="ChevronLeft" label="Back" disabled={!next && !top} onClick={() => goBack(win.id)} />
           <IconButton icon="ChevronRight" label="Forward" disabled={Boolean(next) || !canGoForward(win)} onClick={() => goForward(win.id)} />
-          <div className="shell-screen-title">{next ? next.title : top ? top.title : appName}</div>
-          {top?.intent && !next ? <IconButton icon="RotateCw" label="Reload" onClick={() => reloadScreen(win.id)} /> : null}
+          <div className="shell-screen-title">{next?.failed ? 'This page couldn’t be loaded.' : top ? top.title : appName}</div>
+          {next?.failed ? (
+            <Button size="sm" variant="ghost" onClick={() => retryScreen(win.id)}>
+              Try Again
+            </Button>
+          ) : top?.intent && !next ? (
+            <IconButton icon="RotateCw" label="Reload" onClick={() => reloadScreen(win.id)} />
+          ) : null}
         </header>
       ) : null}
       <div className="shell-window-body">
         {pending || stale ? null : (
-          <iframe
-            ref={iframeRef}
-            title={win.title}
-            src={src}
-            data-win={win.id}
-            sandbox="allow-scripts allow-forms allow-modals"
-            referrerPolicy="no-referrer"
-            aria-hidden={covered || showBoot || next ? true : undefined}
-          />
+          <>
+            {swapping && shown ? <iframe key={shown} className="is-leaving" title={win.title} src={shown} sandbox="allow-scripts allow-forms allow-modals" referrerPolicy="no-referrer" tabIndex={-1} aria-hidden /> : null}
+            <iframe
+              key={src}
+              ref={iframeRef}
+              className={swapping ? 'is-arriving' : undefined}
+              title={win.title}
+              src={src}
+              data-win={win.id}
+              sandbox="allow-scripts allow-forms allow-modals"
+              referrerPolicy="no-referrer"
+              aria-hidden={covered || showBoot || swapping ? true : undefined}
+              onLoad={() => {
+                // A screen whose ready never comes still shows up.
+                const at = src
+                window.setTimeout(() => {
+                  if (srcRef.current !== at) return
+                  setShown(at)
+                  setBoot((current) => (current === 'in' ? 'out' : current))
+                }, 800)
+              }}
+            />
+          </>
         )}
-        {building || waiting ? <WindowSkeleton label={next?.title || win.title} /> : null}
+        {building ? <WindowSkeleton label={win.title} /> : null}
         {showBoot ? (
           placeheld ? (
             <WindowSkeleton label={win.title} leaving={boot === 'out'} />
@@ -352,20 +378,6 @@ export function Window({ win }: { win: Win }) {
                   {pending || stale ? 'Close' : 'Cancel'}
                 </Button>
                 <Button size="sm" variant="primary" onClick={failed.retry}>
-                  Try Again
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : next?.failed ? (
-          <div className="shell-window-state" role="alert">
-            <div className="shell-window-card">
-              <p className="shell-window-lead">This page couldn’t be loaded.</p>
-              <div className="shell-window-actions">
-                <Button size="sm" variant="ghost" onClick={() => goBack(win.id)}>
-                  Back
-                </Button>
-                <Button size="sm" variant="primary" onClick={() => retryScreen(win.id)}>
                   Try Again
                 </Button>
               </div>

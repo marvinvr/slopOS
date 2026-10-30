@@ -1,4 +1,5 @@
 import { icons } from 'lucide'
+import type { AppShell } from './shell'
 
 /**
  * A generated screen as a document for the sandboxed window frame.
@@ -19,8 +20,19 @@ const HEAD = [
   '</style>',
 ].join('')
 
-export function screenDocument(html: string): string {
-  const head = HEAD + iconScript(html)
+/**
+ * The app's shared styles go in before the screen's own, so a screen's new blocks still win.
+ * The newest nav regions ride along for the hook to put in place, with the section this screen is.
+ */
+export function screenDocument(page: string, shell?: AppShell, section?: string): string {
+  // In the app's order, so every block comes after the palette and classes it was written against.
+  // Tailwind fails as a whole on an unknown class, so a screen's own copy of a shared block moves up too.
+  let html = page
+  for (const block of shell?.styles || []) html = html.split(block).join('')
+  const shared = shell ? shell.styles.join('') : ''
+  const navs = shell && Object.keys(shell.navs).length ? shell.navs : null
+  const state = navs || section ? `<script>window.__slopShell=${json({ navs: navs || {}, section: section || null })}</script>` : ''
+  const head = HEAD + shared + state + iconScript(html + (navs ? Object.values(navs).join('') : ''))
   const open = html.match(/<head\b[^>]*>/i)
   if (open && open.index !== undefined) {
     const at = open.index + open[0].length
@@ -50,7 +62,11 @@ function iconScript(html: string): string {
     svgs[name] = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${children}</svg>`
   }
   if (!Object.keys(svgs).length) return ''
-  return `<script>window.__slopIcons=${JSON.stringify(svgs).replace(/</g, '\\u003c')}</script>`
+  return `<script>window.__slopIcons=${json(svgs)}</script>`
+}
+
+function json(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
 }
 
 /**

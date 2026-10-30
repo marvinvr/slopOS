@@ -25,3 +25,102 @@
   width: 100%;
   height: 100%;
 }
+
+/* The control that is waiting for the next screen. The rest of the screen stays as it is. */
+html[data-slop-busy],
+html[data-slop-busy] * {
+  cursor: progress !important;
+}
+
+[data-slop-wait] {
+  pointer-events: none;
+}
+
+[data-slop-wait]:not(input, textarea, select) {
+  position: relative;
+}
+
+[data-slop-wait="spin"] {
+  color: transparent !important;
+}
+
+[data-slop-wait="spin"] > * {
+  opacity: 0 !important;
+}
+
+[data-slop-wait="spin"]::after,
+[data-slop-wait="shimmer"]:not(input, textarea, select)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 1.05em;
+  height: 1.05em;
+  min-width: 12px;
+  min-height: 12px;
+  max-width: 20px;
+  max-height: 20px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--slop-wait-color, currentColor) 28%, transparent);
+  border-top-color: var(--slop-wait-color, currentColor);
+  animation: slop-wait-spin 0.7s linear infinite;
+}
+
+[data-slop-wait="shimmer"]:not(input, textarea, select)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 25%, color-mix(in srgb, var(--slop-wait-color, currentColor) 16%, transparent) 50%, transparent 75%) 0 0 / 220% 100%;
+  animation: slop-wait-sweep 1.1s linear infinite;
+}
+
+input[data-slop-wait],
+textarea[data-slop-wait],
+select[data-slop-wait] {
+  background-image: linear-gradient(100deg, transparent 25%, color-mix(in srgb, var(--slop-wait-color, currentColor) 14%, transparent) 50%, transparent 75%) !important;
+  background-size: 220% 100% !important;
+  animation: slop-wait-sweep 1.1s linear infinite;
+}
+
+/* Rows and cards keep their content and get the spinner at their trailing edge. */
+[data-slop-wait="shimmer"]:not(input, textarea, select)::before {
+  inset: 0 14px 0 auto;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+  min-height: 0;
+}
+
+[data-slop-wait="shimmer"]:not(input, textarea, select) > * {
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+[data-slop-wait="pulse"] {
+  animation: slop-wait-pulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes slop-wait-pulse {
+  to { opacity: 0.35; }
+}
+
+@keyframes slop-wait-spin {
+  to { transform: rotate(1turn); }
+}
+
+@keyframes slop-wait-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slop-wait]::after,
+  [data-slop-wait] {
+    animation-duration: 2.4s !important;
+  }
+}

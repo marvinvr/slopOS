@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { nanoid } from 'nanoid'
 import { getApp, listApps } from '../apps/registry'
+import { addScreen, readShell, resetShell, sectionOf, sectionSlug } from '../apps/shell'
 import { appsDir, workspacesDir, worldDir } from '../paths'
 import { clearAuthBlock } from './auth'
 import { settingsFor, timeoutFor } from './config'
@@ -60,6 +61,9 @@ export async function startGen(body: GenBody): Promise<{ cached: true; result: G
   const inflight = jobForKey(key)
   if (inflight) return { jobId: inflight }
   if (!body.fresh) {
+    // A link to a section the app already has opens that section as it is now.
+    const section = body.kind === 'view' && body.appId ? await existingSection(body.appId, body.context) : null
+    if (section) return { cached: true, result: section }
     const hit = await getCached(key)
     if (hit) return { cached: true, result: hit }
     if (body.kind === 'auto') {
@@ -89,6 +93,7 @@ export async function startGen(body: GenBody): Promise<{ cached: true; result: G
 export async function revert(appId: string, version: number): Promise<AppResult> {
   const manifest = await persist.revertApp(appId, version)
   if (!manifest) return { error: 'version not found', status: 404 }
+  await resetShell(appId, (await persist.readScreen(appId, 'root')) || '', { screen: (await readShell(appId)).root })
   await forgetCached(appId)
   return { manifest }
 }
@@ -136,6 +141,7 @@ async function runCreate(ctx: JobContext, prompt: string): Promise<GenResult> {
       kind: 'create',
       prompt,
     })
+    await resetShell(id, made.html, made.meta)
     await finishApp(id, manifest.name, manifest.description, prompt, 'app', made.meta)
     return { kind: 'app', appId: id, name: manifest.name, version: manifest.version }
   } catch (err) {
@@ -163,6 +169,7 @@ async function runEdit(ctx: JobContext, appId: string, prompt: string): Promise<
     prompt,
     previous: loaded.manifest,
   })
+  await resetShell(appId, made.html, made.meta)
   await forgetCached(appId)
   await finishApp(appId, manifest.name, manifest.description, prompt, 'edit', made.meta)
   return { kind: 'app', appId, name: manifest.name, version: manifest.version }
@@ -187,12 +194,27 @@ async function runRegenerate(ctx: JobContext, appId: string): Promise<GenResult>
     prompt,
     previous: loaded.manifest,
   })
+  await resetShell(appId, made.html, made.meta)
   await forgetCached(appId)
   await finishApp(appId, manifest.name, manifest.description, prompt, 'regenerate', made.meta)
   return { kind: 'app', appId, name: manifest.name, version: manifest.version }
 }
 
-type ScreenContext = { from?: unknown; title?: unknown; shown?: unknown; values?: unknown }
+type ScreenContext = { from?: unknown; title?: unknown; shown?: unknown; values?: unknown; interaction?: { screen?: unknown } }
+
+function targetOf(context: unknown): string | undefined {
+  const screen = (context && typeof context === 'object' ? context : {}) as ScreenContext
+  return sectionSlug(screen.interaction?.screen)
+}
+
+async function existingSection(appId: string, context: unknown): Promise<GenResult | null> {
+  const target = targetOf(context)
+  if (!target) return null
+  const shell = await readShell(appId)
+  const section = shell.sections[target]
+  if (!section || (section.viewId !== 'root' && !(await persist.readScreen(appId, section.viewId)))) return null
+  return { kind: 'view', appId, viewId: section.viewId, title: section.title }
+}
 
 /** The next screen: the one the person acted on, what it showed, and what they did. */
 async function runView(ctx: JobContext, appId: string, intent: string, context?: unknown): Promise<GenResult> {
@@ -201,7 +223,12 @@ async function runView(ctx: JobContext, appId: string, intent: string, context?:
   const screen = (context && typeof context === 'object' ? context : {}) as ScreenContext
   const from = typeof screen.from === 'string' && screen.from !== 'root' ? screen.from : null
   const currentHtml = (from && (await persist.readScreen(appId, from))) || loaded.html
+  const shell = await readShell(appId)
+  const target = targetOf(context)
   const made = await generateScreen(ctx, {
+    shell,
+    section: sectionOf(shell, from || 'root'),
+    target,
     appId,
     kind: 'view',
     mode: 'view',
@@ -216,7 +243,8 @@ async function runView(ctx: JobContext, appId: string, intent: string, context?:
   })
   const title = titleOf(typeof made.meta?.title === 'string' && made.meta.title.trim() ? made.meta.title : intent)
   const viewId = viewIdFor(title)
-  await persist.saveView(appId, viewId, inheritStyles(currentHtml, made.html), { intent, title })
+  await persist.saveView(appId, viewId, made.html, { intent, title })
+  await addScreen(appId, { viewId, slug: target || sectionSlug(made.meta?.screen), title, intent, from: from || 'root', html: made.html })
   await rememberView({ appId, viewId, intent, title })
   await mergeWorld(appId, loaded.manifest.name, { entities: made.meta?.entities }, undefined, 'view')
   await rememberLog({ at: new Date().toISOString(), intent, kind: 'view', appId, summary: title })
@@ -243,6 +271,9 @@ type ScreenRequest = {
   currentHtml?: string
   appName?: string
   screen?: PromptRequest['screen']
+  shell?: PromptRequest['shell']
+  section?: string
+  target?: string
 }
 
 /** One turn: the model replies with the meta json and the whole screen as HTML. Nothing to compile. */
@@ -256,6 +287,9 @@ async function generateScreen(ctx: JobContext, request: ScreenRequest): Promise<
     appName: request.appName,
     currentHtml: request.currentHtml,
     screen: request.screen,
+    shell: request.shell,
+    section: request.section,
+    target: request.target,
   })
   const output = await drive(ctx, { prompt, cwd, kind: request.kind })
   const answer = parseScreenAnswer(output)
@@ -365,12 +399,6 @@ function sameStore(intent: string, shape: string): boolean {
   if (intent === key) return true
   if (intent.includes(' ')) return false
   return intent + 's' === key || intent + 'es' === key || key + 's' === intent || key + 'es' === intent
-}
-
-/** A next screen keeps the look of the one it came from: that screen's <style> blocks go first, unless repeated. */
-function inheritStyles(from: string, html: string): string {
-  const blocks = (from.match(/<style\b[^>]*>[\s\S]*?<\/style>/gi) || []).filter((block) => !html.includes(block))
-  return blocks.length ? `${blocks.join('\n')}\n${html}` : html
 }
 
 function viewIdFor(intent: string): string {

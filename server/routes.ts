@@ -4,6 +4,7 @@ import { sendJson, readBody } from './http'
 import type { Router } from './router'
 import { deleteApp, getApp, listApps } from './apps/registry'
 import { SCREEN_CSP, screenDocument } from './apps/screen'
+import { readShell, sectionOf } from './apps/shell'
 import { readScreen } from './generator/persist'
 import { getGrokStatus } from './generator'
 import { getSettings, putSettings } from './settings'
@@ -34,7 +35,8 @@ export function registerRoutes(router: Router): void {
     if (!id || !APP_ID.test(id) || !viewId || !APP_ID.test(viewId)) return sendJson(ctx.res, 400, { error: 'invalid id' })
     const html = await readScreen(id, viewId)
     if (html === null) return sendJson(ctx.res, 404, { error: 'not found' })
-    const body = Buffer.from(screenDocument(html))
+    const shell = await readShell(id)
+    const body = Buffer.from(screenDocument(html, shell, sectionOf(shell, viewId)))
     const hash = createHash('sha1').update(body).digest('hex').slice(0, 16)
     const encoding = encodingFor(ctx.req, body.length, '.html')
     const etag = `"${encoding ? `${hash}-${encoding}` : hash}"`

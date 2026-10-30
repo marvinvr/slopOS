@@ -1879,3 +1879,15 @@ button.shell-drawer-app > span:not(.shell-tile) {
 [data-theme='dark'] .shell-dock {
   border-color: rgba(255, 248, 240, 0.18);
 }
+
+/* The next screen loads under cover of the current one and replaces it once painted. */
+.shell-window-body iframe.is-arriving {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.shell-window-body iframe.is-leaving {
+  pointer-events: none;
+}

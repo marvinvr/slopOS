@@ -9,7 +9,7 @@ export type SlopMessage = {
 }
 
 /** What the person did on a screen, as the runtime hook read it off the DOM. */
-export type Interaction = { action: 'click' | 'enter' | 'change' | 'submit'; label: string; value?: string }
+export type Interaction = { action: 'click' | 'enter' | 'change' | 'submit'; label: string; value?: string; screen?: string }
 
 /** A generated screen, persisted with its window and restored into the iframe. */
 export type PersistedScreen = {

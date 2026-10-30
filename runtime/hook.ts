@@ -26,7 +26,9 @@ applyTheme(initial === 'dark' || initial === 'light' ? initial : matchMedia('(pr
 window.addEventListener('message', (event) => {
   if (event.source !== parent) return
   const data = event.data as SlopMessage | null
-  if (!data || data.slop !== SLOP_PROTOCOL || data.type !== 'theme') return
+  if (!data || data.slop !== SLOP_PROTOCOL) return
+  if (data.type === 'idle') return release()
+  if (data.type !== 'theme') return
   const payload = (data.payload ?? {}) as { mode?: string; accent?: string }
   applyTheme(payload.mode === 'dark' ? 'dark' : 'light', payload.accent)
 })
@@ -98,6 +100,7 @@ const TARGETS = [
   '[role="checkbox"]',
   '[role="radio"]',
   '[data-action]',
+  '[data-screen]',
 ].join(',')
 
 const CHANGES = ['checkbox', 'radio', 'range', 'color', 'date', 'time', 'datetime-local', 'month', 'week']
@@ -107,10 +110,54 @@ function local(el: Element): boolean {
   return Boolean(el.closest('[data-local]'))
 }
 
-function interact(event: Event, interaction: Interaction): void {
+/** The element waiting for the next screen. Until it arrives (or the shell says idle) the screen takes no other input. */
+let waiting: HTMLElement | null = null
+
+function interact(event: Event, interaction: Interaction, el: Element | null): void {
   event.preventDefault()
   event.stopImmediatePropagation()
+  if (waiting) return
   send('interact', { interaction, values: fieldValues(), shown: clip(document.body?.innerText || '', 2500) })
+  hold(el)
+}
+
+/** Swallow input while a screen is on its way. */
+function blocked(event: Event): boolean {
+  if (!waiting) return false
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  return true
+}
+
+function hold(el: Element | null): void {
+  const target = el instanceof HTMLElement ? el : document.body
+  const box = target.getBoundingClientRect()
+  const style = getComputedStyle(target)
+  // Small controls swap their content for a spinner, links in text pulse, rows, cards and fields shimmer in place.
+  const field = target.matches('input, textarea, select')
+  const mode = field ? 'shimmer' : style.display === 'inline' ? 'pulse' : box.height <= 64 && box.width <= 160 ? 'spin' : 'shimmer'
+  target.style.setProperty('--slop-wait-color', style.color)
+  target.setAttribute('data-slop-wait', mode)
+  target.setAttribute('aria-busy', 'true')
+  document.documentElement.setAttribute('data-slop-busy', '')
+  waiting = target
+}
+
+function release(): void {
+  if (!waiting) return
+  waiting.removeAttribute('data-slop-wait')
+  waiting.removeAttribute('aria-busy')
+  waiting.style.removeProperty('--slop-wait-color')
+  document.documentElement.removeAttribute('data-slop-busy')
+  waiting = null
+}
+
+/** The visible thing a field interaction belongs to: its label or the field itself. */
+function holderOf(field: Element): Element {
+  const label = field.closest('label')
+  if (label) return label
+  if (field instanceof HTMLInputElement && (field.type === 'checkbox' || field.type === 'radio')) return field.parentElement || field
+  return field
 }
 
 window.addEventListener(
@@ -119,12 +166,14 @@ window.addEventListener(
     const target = event.target instanceof Element ? event.target : null
     if (!target || local(target)) return
     const hit = target.closest(TARGETS)
-    if (!hit) return
     // Fields and their labels report through change and Enter instead.
     const field = target.closest('input, textarea, select, label')
+    if ((hit || field) && blocked(event)) return
+    if (!hit) return
     if (field && !field.matches('input[type="submit"], input[type="button"], input[type="image"]')) return
     if (hit.closest('[aria-disabled="true"], :disabled')) return
-    interact(event, { action: 'click', label: labelOf(hit) })
+    const section = hit.closest('[data-screen]')?.getAttribute('data-screen')
+    interact(event, { action: 'click', label: labelOf(hit), ...(section ? { screen: section } : {}) }, hit)
   },
   true,
 )
@@ -137,7 +186,8 @@ window.addEventListener(
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) || local(target)) return
     if (target instanceof HTMLTextAreaElement && !(event.metaKey || event.ctrlKey)) return
     if (target instanceof HTMLInputElement && (CHANGES.includes(target.type) || ['submit', 'button', 'image'].includes(target.type))) return
-    interact(event, { action: 'enter', label: fieldLabel(target), value: target.value.slice(0, 400) })
+    if (blocked(event)) return
+    interact(event, { action: 'enter', label: fieldLabel(target), value: target.value.slice(0, 400) }, target)
   },
   true,
 )
@@ -148,8 +198,9 @@ window.addEventListener(
     const target = event.target
     if (!(target instanceof HTMLSelectElement || target instanceof HTMLInputElement) || local(target)) return
     if (target instanceof HTMLInputElement && !CHANGES.includes(target.type)) return
+    if (blocked(event)) return
     const value = target instanceof HTMLInputElement && (target.type === 'checkbox' || target.type === 'radio') ? (target.checked ? 'on' : 'off') : target.value
-    interact(event, { action: 'change', label: fieldLabel(target), value })
+    interact(event, { action: 'change', label: fieldLabel(target), value }, holderOf(target))
   },
   true,
 )
@@ -159,8 +210,9 @@ window.addEventListener(
   (event) => {
     const form = event.target instanceof HTMLFormElement ? event.target : null
     if (!form || local(form)) return
+    if (blocked(event)) return
     const by = (event as SubmitEvent).submitter
-    interact(event, { action: 'submit', label: (by && labelOf(by)) || form.getAttribute('aria-label') || 'the form' })
+    interact(event, { action: 'submit', label: (by && labelOf(by)) || form.getAttribute('aria-label') || 'the form' }, by || form.querySelector('button:not([type="button"]), input[type="submit"]') || form)
   },
   true,
 )
@@ -205,8 +257,31 @@ function placeIcons(root: ParentNode): void {
   })
 }
 
+type Shell = { navs: Record<string, string>; section: string | null }
+
+/** The app's shell: each nav region of this screen becomes its newest version, with the current section marked. */
+function placeShell(): void {
+  const shell = (window as { __slopShell?: Shell }).__slopShell
+  if (!shell) return
+  const current = shell.section || document.querySelector('[data-nav] [aria-current="page"][data-screen]')?.getAttribute('data-screen')
+  for (const [name, markup] of Object.entries(shell.navs)) {
+    const own = document.querySelector(`[data-nav="${CSS.escape(name)}"]`)
+    if (!own || own.outerHTML === markup) continue
+    const template = document.createElement('template')
+    template.innerHTML = markup
+    const fresh = template.content.firstElementChild
+    if (fresh) own.replaceWith(fresh)
+  }
+  if (!current) return
+  document.querySelectorAll('[data-nav] [data-screen], [data-nav][data-screen]').forEach((el) => {
+    if (el.getAttribute('data-screen') === current) el.setAttribute('aria-current', 'page')
+    else el.removeAttribute('aria-current')
+  })
+}
+
 /** Two frames after the DOM is in (Tailwind has styled it), so the shell lifts its placeholder onto a painted screen. */
 function ready(): void {
+  placeShell()
   placeIcons(document)
   new MutationObserver(() => placeIcons(document)).observe(document.documentElement, { childList: true, subtree: true })
   requestAnimationFrame(() => requestAnimationFrame(() => send('ready')))

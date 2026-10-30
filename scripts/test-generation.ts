@@ -88,7 +88,19 @@ async function main(): Promise<void> {
     const again = await json<{ cached?: boolean; result?: { viewId?: string } }>(base, '/api/gen', ask)
     assert(again.cached === true && again.result?.viewId === view.result.viewId, 'the same screen and interaction should be cached')
     const page = await fetch(`${base}/api/apps/${hostId}/screens/${view.result.viewId}`)
-    assert(page.status === 200 && (await page.text()).includes('Show more'), 'the next screen should be served')
+    const served = await page.text()
+    assert(page.status === 200 && served.includes('Show more'), 'the next screen should be served')
+    assert(served.includes('li { padding: 8px 0'), 'a next screen should load the styles of the screens before it')
+    assert(served.includes('__slopShell') && served.includes('data-screen=\\"stats\\"'), 'a screen should carry the newest nav regions')
+
+    const open = { kind: 'view', appId: hostId, intent: 'Clicked “Done”', key: `${hostId}:root:done`, context: { from: 'root', interaction: { action: 'click', label: 'Done', screen: 'done' } } }
+    const made = await json<{ jobId?: string }>(base, '/api/gen', open)
+    assert(made.jobId, 'opening a new section should start a job')
+    const section = await waitJob(base, made.jobId)
+    assert(section.result?.viewId, 'opening a new section should build it')
+    const elsewhere = { ...open, key: `${hostId}:${view.result.viewId}:done`, context: { ...open.context, from: view.result.viewId } }
+    const reached = await json<{ cached?: boolean; result?: { viewId?: string } }>(base, '/api/gen', elsewhere)
+    assert(reached.cached === true && reached.result?.viewId === section.result.viewId, 'a built section should open from any screen without generating')
 
     const world = await json<{ digest?: string }>(base, '/api/world')
     assert(typeof world.digest === 'string', 'world digest should be a string')

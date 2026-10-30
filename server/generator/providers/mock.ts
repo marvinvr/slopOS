@@ -35,16 +35,23 @@ function todo(mark: string): string {
   li { padding: 8px 0; border-bottom: 1px solid var(--slop-border); }
 </style>
 <!-- slop-mark ${mark} -->
+<nav data-nav="main"><a data-screen="today">Today</a> <a data-screen="done">Done</a></nav>
 <h1>To-dos</h1>
 <input aria-label="New task" placeholder="Add a task">
 <ul><li data-action="Open Water the plants">Water the plants</li><li data-action="Open Call Ines">Call Ines</li></ul>
 <button>Weekly streaks</button>`
 }
 
-const VIEW = `<style>body { margin: 0; padding: 20px; font-family: var(--slop-font); } h1 { font: 600 24px var(--slop-font-display); }</style>
+/** A next screen keeps the shell and adds a section to it. */
+function viewAnswer(prompt: string): string {
+  const section = prompt.match(/opened the section “([a-z0-9-]+)”/)?.[1] || ''
+  const html = `<style>h1 { font: 600 24px var(--slop-font-display); }</style>
+<nav data-nav="main"><a data-screen="today">Today</a> <a data-screen="done">Done</a> <a data-screen="stats">Stats</a></nav>
 <h1>Screen</h1>
 <p>A generated screen.</p>
 <a href="#more">Show more</a>`
+  return answer({ title: section ? section.charAt(0).toUpperCase() + section.slice(1) : 'Screen', screen: section, entities: [] }, html)
+}
 
 /** The single-shot answer: meta json, then the screen. */
 function answer(meta: Record<string, unknown>, html: string): string {
@@ -54,11 +61,11 @@ function answer(meta: Record<string, unknown>, html: string): string {
 function appAnswer(prompt: string): string {
   const edited = /follow this instruction/i.test(prompt)
   const mark = edited ? 'v2' : 'v1'
-  const timer = /pomodoro|\btimer\b/i.test(prompt)
+  const timer = /pomodoro|\btimer\b/i.test(prompt.slice(prompt.indexOf('## Task')).split('\n')[1] || '')
   const meta = timer
     ? manifest('Pomodoro', 'Timer', 'A calm timer for one focused stretch.')
     : manifest('To-dos', 'ListTodo', 'A short list of what is left to do.')
-  return answer({ ...meta, title: meta.name, entities: [] }, timer ? pomodoro(mark) : todo(mark))
+  return answer({ ...meta, title: meta.name, screen: timer ? '' : 'today', entities: [] }, timer ? pomodoro(mark) : todo(mark))
 }
 
 export const mockProvider: GeneratorProvider = {
@@ -73,7 +80,7 @@ export const mockProvider: GeneratorProvider = {
     yield { type: 'thinking', text: 'Sketching a calm layout that fits the desktop.' }
     await sleep(step, opts.signal)
     if (opts.signal.aborted) return
-    const output = opts.kind === 'view' ? answer({ title: 'Screen', entities: [] }, VIEW) : appAnswer(opts.prompt)
+    const output = opts.kind === 'view' ? viewAnswer(opts.prompt) : appAnswer(opts.prompt)
     await sleep(step, opts.signal)
     if (opts.signal.aborted) return
     yield { type: 'text', text: output }

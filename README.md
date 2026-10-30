@@ -79,6 +79,10 @@ An app is a folder with a `manifest.json` (name, lucide icon, window size), **on
 
 ```html
 <div class="min-h-screen bg-gradient-to-br from-amber-50 to-rose-100 p-6 dark:from-stone-900 dark:to-stone-800">
+  <nav data-nav="main" class="flex gap-4 text-sm">
+    <a data-screen="today" class="aria-[current=page]:font-semibold">Today</a>
+    <a data-screen="streaks" class="aria-[current=page]:font-semibold">Streaks</a>
+  </nav>
   <h1 class="font-display text-4xl">Kindling</h1>
   <p class="text-stone-500">12 days in a row</p>
   <div data-action="Open Read 20 pages" class="mt-4 rounded-2xl bg-white/70 p-4 shadow">
@@ -88,7 +92,9 @@ An app is a folder with a `manifest.json` (name, lucide icon, window size), **on
 </div>
 ```
 
-Clicking **New habit** or the card sends that interaction, the screen's text and any typed values to the model, and the screen that comes back replaces this one. Links, buttons, tabs, `data-action` elements, Enter in a field, toggles and form submits all count; controls marked `data-local` stay with the screen's own script (a play button, a flip animation).
+Clicking **New habit** or the card sends that interaction, the screen's text and any typed values to the model. Meanwhile the screen stays put and only what you clicked shows it is loading (a spinner on a button, a shimmer on a row); the screen that comes back replaces this one. Links, buttons, tabs, `data-action` elements, Enter in a field, toggles and form submits all count; controls marked `data-local` stay with the screen's own script (a play button, a flip animation).
+
+Every click builds the app out instead of starting over. The model gets the app so far (its sections and what they show, its shared styles, its nav) and keeps the shell while it adds to it. Styles any screen defined load on every screen, the newest `data-nav` regions replace older ones everywhere, and a section that exists (`data-screen="streaks"`) opens instantly from any screen.
 
 The pipeline: prompt → one answer (meta json + HTML) → stored as is → served as its own document in a sandboxed iframe (`sandbox="allow-scripts"`, no same-origin) that talks to the shell only via `postMessage`. **Customize…** sends the first screen with your instruction and gets the whole new screen back; every change is a version you can restore from **Version History**. Apps from the older React format reinstall themselves the first time they open.
 
@@ -96,15 +102,16 @@ The engineering spec is [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Good to know
 
-- **How long it takes.** Measured with Grok `grok-4.7-build-fast` on low effort (the configured `.env`): isolated servers, real runs, the previous React/TSX pipeline and the HTML screens generating side by side so both saw the same Grok load (4 apps, 2 clicks each, medians):
+- **How long it takes.** Measured with Grok `grok-4.7-build-fast` on low effort (the configured `.env`): isolated servers, real runs in headless Chrome, the compact screens (a hard ~3.5 KB budget, each screen on its own) and the growing apps (quality first, shared shell) generating side by side so both saw the same Grok load (3 apps, 3 clicks each, medians):
 
-  | | React screens (kit + esbuild) | HTML screens (Tailwind) |
+  | | Compact screens | Growing apps (now) |
   | --- | --- | --- |
-  | Open a new app from Spotlight | about 44 s (26–64 s) | about 41 s (32–59 s) |
-  | Next screen after a click | about 20 s (16–54 s) | about 22 s (17–40 s) |
-  | Answer size | about 4.5 KB | about 4.2 KB |
+  | Open a new app from Spotlight | about 26 s (24–29 s) | about 67 s (60–90 s) |
+  | Next screen after a click | about 18 s (16–25 s) | about 62 s (37–114 s) |
+  | Opening a section the app already has | — | instant |
+  | Answer size | about 4 KB | about 16 KB |
 
-  Nearly all of that is the model writing its answer; compiling took milliseconds, and answer length is what moves the time. A cached screen opens instantly. A bigger model or higher effort takes longer per answer.
+  Nearly all of that is the model writing its answer, so answer length is what moves the time; the richer screens cost it. While a screen is on its way the current one stays up and only the clicked control shows it is loading. A cached screen or an existing section opens instantly. A bigger model or higher effort takes longer per answer.
 - **Generated code runs sandboxed** in an iframe without same-origin access and talks to the shell only through `postMessage`. Its Content-Security-Policy allows its own inline scripts and styles but no network at all: no fetch, no remote scripts, fonts or images.
 - **One world per server.** Everything lives in `data/` (or `SLOPOS_DATA_DIR`). Back that folder up to keep your world, or use Reset slopOS to start over.
 

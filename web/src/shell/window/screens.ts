@@ -32,6 +32,20 @@ function setPending(winId: string, next: Pending | null): void {
   emit()
 }
 
+/** The screen keeps its clicked control busy until the next screen replaces it; anything else frees it again. */
+const releasers = new Map<string, () => void>()
+
+export function onRelease(winId: string, release: () => void): () => void {
+  releasers.set(winId, release)
+  return () => {
+    if (releasers.get(winId) === release) releasers.delete(winId)
+  }
+}
+
+function release(winId: string): void {
+  releasers.get(winId)?.()
+}
+
 export function usePending(winId: string): Pending | undefined {
   return useSyncExternalStore(
     (listener) => {
@@ -84,6 +98,11 @@ function load(winId: string, next: Pending, fresh = false): void {
       if (!current) return setPending(winId, null)
       const back = current.screens.filter((screen) => !screen.ahead)
       const ahead = current.screens.filter((screen) => screen.ahead)
+      // A link to the section they are already on.
+      if (!next.replace && result.viewId === (back.at(-1)?.viewId || 'root')) {
+        setPending(winId, null)
+        return release(winId)
+      }
       const screen: PersistedScreen = {
         id: randomUUID(),
         title: result.title || next.title,
@@ -98,12 +117,17 @@ function load(winId: string, next: Pending, fresh = false): void {
     })
     .catch((err: unknown) => {
       if (err instanceof Error) console.warn(err.message)
-      if (pending.get(winId)?.token === next.token) setPending(winId, { ...next, failed: true })
+      if (pending.get(winId)?.token !== next.token) return
+      setPending(winId, { ...next, failed: true })
+      release(winId)
     })
 }
 
 export function goBack(winId: string): void {
-  if (pending.has(winId)) return setPending(winId, null)
+  if (pending.has(winId)) {
+    setPending(winId, null)
+    return release(winId)
+  }
   const win = windowOf(winId)
   const back = win?.screens.filter((screen) => !screen.ahead) ?? []
   const last = back.at(-1)

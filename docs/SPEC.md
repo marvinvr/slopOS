@@ -108,6 +108,7 @@ manifest.json   { "id": "notes", "name": "Notes", "icon": "StickyNote", "descrip
                   "version": 1, "createdAt": "…", "updatedAt": "…", "prompt": "…", "prompts": [ … history … ] }
 index.html      the first screen (+ versions/<n>.html)
 views/<viewId>/view.html   every later screen (+ meta.json)
+shell.json      the app's shell: shared styles, newest nav regions, sections (see below)
 ```
 
 - A screen is the inside of `<body>`: markup, optional `<style>`, optional `<script>`. The model picks freely per screen
@@ -119,10 +120,23 @@ views/<viewId>/view.html   every later screen (+ meta.json)
     also into nodes a script adds later.
   - **Plain scripts** for local life (animation, canvas, clocks), or **React + htm** for components and state:
     `import { html, render, useState } from '/runtime/react.js'` in a `<script type="module">`. No JSX, no compile step.
-- The model names its palette once (`@theme` colors in a `<style type="text/tailwindcss">` block) and uses `@apply` for
-  repeated looks; that keeps answers short, and answer length is what generation time follows.
-- A next screen is stored with the `<style>` blocks of the screen it came from in front (unless it repeats one), so it
-  keeps the app's look and the model only writes the styles that are new.
+- The prompt aims for the best screen the model can make: an ambitious, polished app with its own visual identity, rich
+  lived-in content, a considered layout and micro-interactions. Size is a soft guideline (quality first); the model
+  names its palette once (`@theme` colors in a `<style type="text/tailwindcss">` block) and uses `@apply` for repeated
+  looks, which keeps answers lean, and answer length is what generation time follows.
+- **The app grows as one app.** `shell.json` holds what all its screens share:
+  - `styles`: every `<style>` block any screen defined, in the order they came (past 40k chars the oldest go, except the first screen's palette). The server puts all of them in
+    the head of each served screen, in that order, and takes the screen's own copies out of its body, so every block comes
+    after the palette and classes it was written against (Tailwind drops a whole stylesheet on one unknown class).
+  - `navs`: the newest markup of each `[data-nav="name"]` region (sidebar, tab bar, header nav). The server ships them
+    as `window.__slopShell`; the hook swaps them into the screen's matching regions before it paints, and marks the
+    entry of the current section with `aria-current="page"`. Older screens therefore show the newest nav.
+  - `sections`: screens with a stable slug (`screen` in the answer's meta), with title, how they were opened and a line
+    of what they show. Nav entries link with `data-screen="slug"`; the click carries the slug, and a section that exists
+    opens as it is, from any screen, without generating (`/api/gen` answers it like a cache hit; Reload regenerates).
+    Opening a slug that has no screen yet builds it under that slug.
+  A new first screen (create, Customize, Reinstall, restoring a version) starts the shell over from that screen.
+  Apps from before shells derive one from their first screen.
 - Content is realistic and specific. Controls that should lead somewhere are links, buttons, roles or carry
   `data-action="what it does"`; controls the screen's own script handles carry `data-local`.
 - `icon` is a lucide icon name (PascalCase). The shell renders it on a rounded tile with a stable per-app tint.
@@ -143,10 +157,12 @@ views/<viewId>/view.html   every later screen (+ meta.json)
   (the sandboxed frame has a `null` origin).
 - The hook (`runtime/hook.ts`, ~6 KB) applies the theme, places icons, forwards global shortcuts
   (Cmd/Ctrl+Space, Cmd/Ctrl+W, unhandled Escape, …) and history keys, and reports interactions. It posts `ready` two
-  frames after the DOM is in, so the shell lifts its placeholder onto a painted screen.
+  frames after the DOM is in, so the shell lifts its placeholder onto a painted screen, or swaps the frames.
+- The next screen loads in a second, hidden iframe on top of the current one; on its `ready` (or 800 ms after `load`)
+  it takes over and the old frame goes. Nothing blanks between screens, and Back/Forward and cache hits stay instant.
 - Host ⇄ screen communication is ONLY via `postMessage` (`{ slop: 1, type, winId?, payload }`):
   screen → shell `ready`, `interact { interaction, values, shown }`, `nav { to: 'back'|'forward' }`, `keydown`, `keyup`;
-  shell → screen `theme { mode, accent }`. A screen's own script errors stay in that screen.
+  shell → screen `theme { mode, accent }`, `idle` (the wait ended without a new screen). A screen's own script errors stay in that screen.
 
 ## Generator providers (local CLIs + subscriptions, NO API keys)
 
@@ -185,8 +201,10 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
 - **mock**: `SLOPOS_GENERATOR=mock` — canned single-shot answers (tests, screenshots).
 
 **Common pipeline** (provider-independent). The prompt is small: the screen rules (what is loaded, how interactions are
-caught, a size budget), the world digest, and the task. The answer is exactly two fenced blocks: a `json` block (first
-screen: `name`, `icon`, `description`, `title`, `window`, `entities`; later screens: `title`, `entities`) and an `html`
+caught, the app shell), the world digest, and the task. A next screen also gets the app so far: its sections with what
+each shows, its shared styles, and its nav regions; the screen the person acted on comes without those repeats. The
+answer is exactly two fenced blocks: a `json` block (first screen: `name`, `icon`, `description`, `title`, `screen`,
+`window`, `entities`; later screens: `title`, `screen`, `entities`) and an `html`
 block with the screen. The server stores the HTML as it is: nothing to compile, check or repair. An answer without a
 screen fails the job, and Try Again asks once more. Edit (Customize) sends the current first screen and gets the whole new
 screen back. Regenerate (Reinstall) designs the first screen afresh. Edit, Reinstall and restoring a version drop the
@@ -212,10 +230,14 @@ score is at least 80 and leads the next by 15 (exact name 100, exact storage key
 word present in a short intent 80). Anything else is created as a new app.
 
 **Interactions.** The hook catches every meaningful interaction in the capture phase on `window`, before the screen's own
-handlers: clicks on links, buttons, `[role=button|link|tab|option|menuitem|switch|checkbox|radio]` and `[data-action]`;
+handlers: clicks on links, buttons, `[role=button|link|tab|option|menuitem|switch|checkbox|radio]`, `[data-action]` and `[data-screen]`;
 Enter in an input (Cmd/Ctrl+Enter in a text area); changes of selects, checkboxes, radios, sliders and date/time fields;
 form submits. Anything inside `[data-local]` is left to the screen. The hook posts `interact` with the interaction
-(`data-action` text, else aria-label, title or text), the field values and the visible text (≤2500 chars). The shell
+(`data-action` text, else aria-label, title or text, plus `screen` from the nearest `data-screen`), the field values and
+the visible text (≤2500 chars). The acted-on element (clicked control, the field, its label, or the form's submit
+button) shows that it is waiting: small controls swap their content for a spinner, inline links pulse, rows, cards and
+fields shimmer with a spinner at their trailing edge (`[data-slop-wait]`, `aria-busy`). Until the next screen replaces
+the document, the screen takes no other input (`html[data-slop-busy]`); `idle` from the shell frees it again. The shell
 turns it into `kind: 'view'` with an intent such as `Clicked “Add habit”` or `Typed “Read 20 pages” in New habit and pressed Enter`,
 and a context of `{ from: <viewId | 'root'>, title, interaction, values: [{ field, value }], shown }`. The server inlines
 the HTML of the `from` screen (scripts dropped when it is very long).
@@ -227,7 +249,9 @@ interaction returns the stored screen at once. Reload (the ↻ in the screen bar
 screens in `win.screens` (persisted with the window; forward items carry `ahead: true`, newest 24 kept) plus the one
 screen it is waiting for. The screen bar under the title bar shows back, forward, the screen title and Reload whenever
 there is history. Cmd/Ctrl+[ and ] (or Alt+←/→) go back and forward, also from inside a screen. While the next screen
-loads, the window shows the quiet skeleton with a thin accent gleam under the bar; Back cancels the wait.
+loads, the current one stays as it is: only the acted-on control shows it is loading, plus a thin accent gleam under
+the bar. Back cancels the wait. A failed screen says so in the bar with Try Again, and the screen is usable again. The
+full skeleton is only for a window with nothing to show yet (a new app, a rebuild).
 
 ### Server
 

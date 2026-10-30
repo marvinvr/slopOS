@@ -2,7 +2,7 @@ import { useEffect, type RefObject } from 'react'
 import { SLOP_PROTOCOL, type Interaction, type SlopMessage } from '../../../../runtime/protocol'
 import { releaseModifier, runShortcut } from '../shortcuts'
 import { useShell, type Win } from '../store'
-import { goBack, goForward, interact } from '../window/screens'
+import { goBack, goForward, interact, onRelease } from '../window/screens'
 
 /** Messages from a window's screen: ready, forwarded shortcuts, history keys, and interactions. */
 export function useWindowBridge(win: Win, iframeRef: RefObject<HTMLIFrameElement | null>): void {
@@ -21,6 +21,8 @@ export function useWindowBridge(win: Win, iframeRef: RefObject<HTMLIFrameElement
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [iframeRef, win.id])
+
+  useEffect(() => onRelease(win.id, () => post(iframeRef.current?.contentWindow, { type: 'idle' })), [iframeRef, win.id])
 
   useEffect(() => {
     post(iframeRef.current?.contentWindow, { type: 'theme', payload: { mode, accent } })
