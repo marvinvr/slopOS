@@ -36,7 +36,7 @@ html[data-slop-busy] * {
   pointer-events: none;
 }
 
-[data-slop-wait]:not(input, textarea, select) {
+[data-slop-anchor] {
   position: relative;
 }
 

@@ -814,38 +814,41 @@ body {
 }
 
 /* Back, forward, the screen's title, and Reload, once a window has more than its first screen. */
-.shell-screen-bar {
+.shell-titlebar-nav,
+.shell-titlebar-end {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 40px;
-  padding: 0 8px 0 4px;
-  border-bottom: 1px solid var(--slop-border);
-  background: var(--slop-bg);
-  flex: none;
-  position: relative;
+  gap: 2px;
 }
 
-.shell-screen-bar.is-loading::after {
+.shell-titlebar-nav {
+  margin-left: 6px;
+}
+
+.shell-titlebar-end {
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+.shell-title.has-nav {
+  padding: 0 150px;
+}
+
+/* Loading: a thin line over the titlebar's bottom border. It takes no space, so nothing below moves. */
+.shell-titlebar.is-loading::after {
   content: "";
   position: absolute;
+  z-index: 2;
   left: 0;
   right: 0;
   bottom: -1px;
   height: 2px;
+  pointer-events: none;
   background: linear-gradient(90deg, transparent 0%, transparent 36%, var(--slop-accent) 50%, transparent 64%, transparent 100%) 0 0 / 200% 100% repeat-x;
   animation: shell-skel 1.6s linear infinite;
   opacity: 0.9;
-}
-
-.shell-screen-title {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .shell-window-body {
@@ -1185,7 +1188,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .shell-skeleton i,
   .shell-skeleton b,
-  .shell-screen-bar.is-loading::after {
+  .shell-titlebar.is-loading::after {
     animation: none;
   }
 }

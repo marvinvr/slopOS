@@ -243,15 +243,17 @@ and a context of `{ from: <viewId | 'root'>, title, interaction, values: [{ fiel
 the HTML of the `from` screen (scripts dropped when it is very long).
 
 **Cache.** The shell passes `key = <appId>:<from>:<hash(interaction, values)>`, so the same screen plus the same
-interaction returns the stored screen at once. Reload (the ↻ in the screen bar) and Try Again pass `fresh`.
+interaction returns the stored screen at once. Reload (the ↻ in the title bar) and Try Again pass `fresh`.
 
 **History.** The shell owns it (`web/src/shell/window/screens.ts`). Each window keeps a back stack and a forward list of
 screens in `win.screens` (persisted with the window; forward items carry `ahead: true`, newest 24 kept) plus the one
-screen it is waiting for. The screen bar under the title bar shows back, forward, the screen title and Reload whenever
-there is history. Cmd/Ctrl+[ and ] (or Alt+←/→) go back and forward, also from inside a screen. While the next screen
-loads, the current one stays as it is: only the acted-on control shows it is loading, plus a thin accent gleam under
-the bar. Back cancels the wait. A failed screen says so in the bar with Try Again, and the screen is usable again. The
-full skeleton is only for a window with nothing to show yet (a new app, a rebuild).
+screen it is waiting for. Back, forward, the screen title and Reload sit in the window's title bar (its height never
+changes) whenever there is history. Cmd/Ctrl+[ and ] (or Alt+←/→) go back and forward, also from inside a screen. While
+the next screen loads, nothing moves: only the acted-on control shows it is loading, plus a thin accent gleam drawn over
+the title bar's bottom edge (absolutely positioned, no layout space). An element that waits keeps its box: the
+indicators are pseudo-elements and opacity, and only a static element is anchored with `position: relative`. Back
+cancels the wait. A failed screen says so in the title bar with Try Again, and the screen is usable again. The full
+skeleton is only for a window with nothing to show yet (a new app, a rebuild).
 
 ### Server
 

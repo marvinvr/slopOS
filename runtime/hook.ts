@@ -137,6 +137,8 @@ function hold(el: Element | null): void {
   const field = target.matches('input, textarea, select')
   const mode = field ? 'shimmer' : style.display === 'inline' ? 'pulse' : box.height <= 64 && box.width <= 160 ? 'spin' : 'shimmer'
   target.style.setProperty('--slop-wait-color', style.color)
+  // Anchor for the spinner and shimmer; an element that is already positioned stays exactly where it is.
+  if (style.position === 'static' && !field) target.setAttribute('data-slop-anchor', '')
   target.setAttribute('data-slop-wait', mode)
   target.setAttribute('aria-busy', 'true')
   document.documentElement.setAttribute('data-slop-busy', '')
@@ -146,6 +148,7 @@ function hold(el: Element | null): void {
 function release(): void {
   if (!waiting) return
   waiting.removeAttribute('data-slop-wait')
+  waiting.removeAttribute('data-slop-anchor')
   waiting.removeAttribute('aria-busy')
   waiting.style.removeProperty('--slop-wait-color')
   document.documentElement.removeAttribute('data-slop-busy')

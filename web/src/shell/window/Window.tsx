@@ -196,7 +196,7 @@ export function Window({ win }: { win: Win }) {
 
   function onTitleDown(event: ReactPointerEvent) {
     if (event.button !== 0) return
-    if ((event.target as HTMLElement).closest('.shell-lights')) return
+    if ((event.target as HTMLElement).closest('.shell-lights, button')) return
     focusWindow(win.id)
     const pre = { x: win.x, y: win.y, width: win.width, height: win.height }
     const grabRatio = clampGrab((event.clientX - win.x) / Math.max(1, win.width))
@@ -282,7 +282,7 @@ export function Window({ win }: { win: Win }) {
   const appName = app?.name || win.title
   const covered = building || Boolean(failed)
   const showBoot = !covered && boot !== 'off'
-  const showBar = !covered && (win.screens.length > 0 || Boolean(next))
+  const showNav = !covered && (win.screens.length > 0 || Boolean(next))
   const waiting = Boolean(next && !next.failed)
 
   return (
@@ -307,28 +307,32 @@ export function Window({ win }: { win: Win }) {
         if (event.target === event.currentTarget && event.animationName === 'shell-win-in') setOpening(false)
       }}
     >
-      <div className="shell-titlebar" onPointerDown={onTitleDown} onDoubleClick={() => { if (!dragged.current) toggleMaximize(win.id) }}>
+      {/* One fixed-height bar: screen history lives in it and loading draws over its bottom edge, so the screen never moves. */}
+      <div className={cx('shell-titlebar', waiting && 'is-loading')} onPointerDown={onTitleDown} onDoubleClick={(event) => { if (!dragged.current && !(event.target as HTMLElement).closest('button')) toggleMaximize(win.id) }}>
         <div className="shell-lights">
           <Light kind="close" label="Close" onClick={() => closeWindow(win.id)} />
           <Light kind="min" label="Minimize" onClick={() => minimizeWindow(win.id)} />
           <Light kind="max" label={win.maximized ? 'Zoom out' : 'Zoom'} onClick={() => toggleMaximize(win.id)} />
         </div>
-        <div className="shell-title">{win.title}</div>
+        {showNav ? (
+          <div className="shell-titlebar-nav">
+            <IconButton icon="ChevronLeft" label="Back" size="sm" disabled={!next && !top} onClick={() => goBack(win.id)} />
+            <IconButton icon="ChevronRight" label="Forward" size="sm" disabled={Boolean(next) || !canGoForward(win)} onClick={() => goForward(win.id)} />
+          </div>
+        ) : null}
+        <div className={cx('shell-title', showNav && 'has-nav')}>{next?.failed ? 'This page couldn’t be loaded.' : top && !covered ? top.title : win.title}</div>
+        {showNav ? (
+          <div className="shell-titlebar-end">
+            {next?.failed ? (
+              <Button size="sm" variant="ghost" onClick={() => retryScreen(win.id)}>
+                Try Again
+              </Button>
+            ) : top?.intent && !next ? (
+              <IconButton icon="RotateCw" label="Reload" size="sm" onClick={() => reloadScreen(win.id)} />
+            ) : null}
+          </div>
+        ) : null}
       </div>
-      {showBar ? (
-        <header className={cx('shell-screen-bar', waiting && 'is-loading')}>
-          <IconButton icon="ChevronLeft" label="Back" disabled={!next && !top} onClick={() => goBack(win.id)} />
-          <IconButton icon="ChevronRight" label="Forward" disabled={Boolean(next) || !canGoForward(win)} onClick={() => goForward(win.id)} />
-          <div className="shell-screen-title">{next?.failed ? 'This page couldn’t be loaded.' : top ? top.title : appName}</div>
-          {next?.failed ? (
-            <Button size="sm" variant="ghost" onClick={() => retryScreen(win.id)}>
-              Try Again
-            </Button>
-          ) : top?.intent && !next ? (
-            <IconButton icon="RotateCw" label="Reload" onClick={() => reloadScreen(win.id)} />
-          ) : null}
-        </header>
-      ) : null}
       <div className="shell-window-body">
         {pending || stale ? null : (
           <>

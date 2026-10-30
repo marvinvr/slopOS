@@ -46,7 +46,7 @@ const FORMAT_NEXT = [
 
 const SCREEN_RULES = [
   '## The app',
-  '- You build a real desktop app for slopOS, a warm, slightly playful take on macOS, one screen at a time. The OS draws the window, its title bar, and a bar with back, forward and the screen title; you fill the content area. The HTML goes inside <body>; no <html> or <head> needed.',
+  '- You build a real desktop app for slopOS, a warm, slightly playful take on macOS, one screen at a time. The OS draws the window and its title bar (with back, forward and the screen title); you fill the content area. The HTML goes inside <body>; no <html> or <head> needed.',
   '- Make the best screen you can: polished and ambitious, like the flagship app of a great product team. Give the app its own visual identity, chosen for what it is: palette, type pairing, iconography, illustration and motion. Avoid the generic admin-dashboard look.',
   '- Rich content that feels lived in: specific names, numbers, dates, prose, states (unread counts, progress, timestamps, initials avatars, charts and art drawn in SVG). Enough of it that the app feels in use. Never lorem ipsum, placeholders, or "coming soon".',
   '- Thoughtful layout: a clear hierarchy and a focal point; density where it helps (lists, tables, inspectors), air where it matters.',
@@ -139,7 +139,7 @@ function taskBody(request: PromptRequest): string {
       `- ${target}`,
       '- Build the app out: this screen goes deeper than the last, with its own layout, new detail, and real data. Every fact, name, and number the person has seen or typed stays true, and what they just did shows (a new item appears, a toggle stays on, a detail opens).',
       '- Use the design system above; add to it only what is new.',
-      '- The window already shows a bar with back, forward, and this screen’s title. Do not draw a back button.',
+      '- The window’s title bar already shows back, forward, and this screen’s title. Do not draw a back button.',
       '',
       FORMAT_NEXT,
     ]
