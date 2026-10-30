@@ -10,6 +10,9 @@ const root = path.resolve(import.meta.dirname)
 // import map points those at the shims below. Bootstrap, the shims, and the SDK share
 // Rollup chunks, so the frame and the app use one React.
 export default defineConfig({
+  // Served at /runtime/. Vite's preload helper joins `base` onto dynamic chunk
+  // deps, so without this those requests land at /chunks/ and 404.
+  base: '/runtime/',
   plugins: [react()],
   publicDir: path.join(root, 'runtime/static'),
   resolve: {
