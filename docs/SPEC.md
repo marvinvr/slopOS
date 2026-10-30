@@ -127,7 +127,7 @@ app.tsx         single file React component, `export default function App() { �
   (the sandboxed frame has a `null` origin).
 - Host ⇄ app communication is ONLY via `postMessage` with a small typed protocol
   (`{ slop: 1, type, id?, payload }`), request/response matched by `id`. Message types (extend as needed):
-  `ready`, `theme`, `setTitle`, `setSize`, `close`, `notify`, `storage.get|set|remove|keys`,
+  `ready`, `theme`, `setTitle`, `setSize`, `close`, `notify`, `storage.get|set|remove|keys|read`,
   `fetch` (server proxy), `menu.set`, `menu.invoke`, `error`, `focus`, `keydown` (forward global shortcuts like
   Cmd/Ctrl+Space and Cmd/Ctrl+W from inside the frame to the shell).
 - App crashes (render errors via an error boundary, uncaught errors, unhandled rejections) are reported to
@@ -141,6 +141,7 @@ app.tsx         single file React component, `export default function App() { �
 useWindow(): { title: string; setTitle(t: string): void; setSize(w: number, h: number): void; close(): void; focused: boolean }
 // storage, per app, persisted server-side (data/storage/<appId>.json), JSON values
 useStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void, { loaded: boolean }]
+useAppData<T>(appId: string, key: string): [T | undefined, { loaded: boolean }]  // read-only, another app’s store
 storage: { get<T>(key): Promise<T | undefined>; set(key, value): Promise<void>; remove(key): Promise<void>; keys(): Promise<string[]> }
 // system
 notify(title: string, body?: string): void          // toast in the shell
@@ -283,7 +284,7 @@ real; for everything beyond that (secondary screens, settings, "more…", detail
 the button handler-less or give it an explicit `intent` — never fake a stub or a "coming soon".
 
 Generated **views** use the app format with a different signature: `export default function View({ params, context })`
-(same import rules; they may use `useStorage` — storage is per app, so views share data with their app). They are
+(same import rules; they may use `useStorage` — storage is per app, so views share data with their app). `useAppData(appId, key)` reads another app's store and cannot write it. They are
 compiled like apps and loaded by the runtime via dynamic `import()` of their bundle URL into the same iframe.
 
 **Materializing states** (tasteful, OS-like): a screen being generated shows the target title immediately with a soft

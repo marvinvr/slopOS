@@ -33,8 +33,9 @@ async function post(url: string, body?: unknown): Promise<unknown> {
   return data
 }
 
-export function postGenerate(prompt: string): Promise<{ jobId: string }> {
-  return post('/api/apps/generate', { prompt }) as Promise<{ jobId: string }>
+/** Spotlight create. A matching app comes back cached; anything new starts a job. */
+export function postAuto(intent: string): Promise<{ jobId?: string; cached?: boolean; result?: GenResult }> {
+  return post('/api/gen', { kind: 'auto', intent }) as Promise<{ jobId?: string; cached?: boolean; result?: GenResult }>
 }
 
 export function postEdit(appId: string, prompt: string): Promise<{ jobId: string }> {

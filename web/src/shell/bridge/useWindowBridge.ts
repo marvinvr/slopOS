@@ -149,6 +149,19 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
       reply({ keys: Object.keys(body.data ?? {}) })
       break
     }
+    case 'storage.read': {
+      const appId = typeof payload.appId === 'string' ? payload.appId : ''
+      const key = typeof payload.key === 'string' ? payload.key : ''
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(appId) || !key || /[\\/]/.test(key)) {
+        reply({ found: false })
+        break
+      }
+      const res = await fetch(`/api/storage/${appId}/${encodeURIComponent(key)}`)
+      const body = (await res.json().catch(() => null)) as { found?: boolean; value?: unknown } | null
+      if (!res.ok || !body || body.found === false) reply({ found: false })
+      else reply(body)
+      break
+    }
     case 'fetch': {
       const res = await fetch('/api/proxy', {
         method: 'POST',

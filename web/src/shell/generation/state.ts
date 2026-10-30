@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { useShell } from '../store'
-import { fetchJobs, postCancel, postEdit, postFix, postGenerate, postRegenerate, postRevert, type GenResult, type JobInfo } from './api'
+import { fetchJobs, postAuto, postCancel, postEdit, postFix, postRegenerate, postRevert, type GenResult, type JobInfo } from './api'
 
 export type GrokStatus = {
   available: boolean
@@ -131,7 +131,13 @@ export function startGeneration(prompt: string): void {
   void (async () => {
     if (await blocked()) return
     try {
-      const body = await postGenerate(text)
+      const body = await postAuto(text)
+      if (body.cached && body.result?.kind === 'app') {
+        await useShell.getState().refreshApps()
+        useShell.getState().openApp(body.result.appId)
+        return
+      }
+      if (!body.jobId) throw new Error('Generation returned nothing')
       openPanel({ jobId: body.jobId, prompt: text, kind: 'create', retry: () => startGeneration(text) })
     } catch (err) {
       useShell.getState().pushToast('Could not start generation', err instanceof Error ? err.message : 'failed')
