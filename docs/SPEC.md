@@ -53,7 +53,7 @@ runtime/                code that runs INSIDE an app iframe: bootstrap + @slop/s
 fixtures/apps/<id>/     hidden test fixture apps for the pipeline/runtime (NOT shown to users)
 data/                   runtime data, gitignored (generated apps, per-app storage, settings)
 docs/SPEC.md            this file
-docs/APP_SDK.md         the app SDK reference (also embedded into the Grok generation prompt)
+docs/APP_SDK.md         the app SDK reference (a job-time digest is embedded into the generation prompt)
 ```
 
 Scripts:
@@ -214,7 +214,8 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
   `${SLOPOS_GROK_MODEL:-grok-4.7}` / effort `${SLOPOS_GROK_EFFORT:-medium}` per session, permission requests answered
   by slopOS: allow only file read/write/edit inside the workspace, deny shell/web/everything else). After `session/new`,
   `session/load`, and an in-memory resume, slopOS calls `session/set_config_option` for `model` and `reasoning_effort`.
-  The CLI flag loses to the user's own config in ACP mode; the protocol call is what makes the slopOS setting stick. Avoids the ~6 s
+  The CLI flag loses to the user's own config in ACP mode; the protocol call is what makes the slopOS setting stick.
+  `session/new` passes `_meta.systemPromptOverride`: a short write-once prompt, so the CLI's own verify-with-tools instructions do not add a revision pass. Tool schemas stay on the ACP channel. Avoids the ~6 s
   per-call startup, supports cancel, and keeps one session per app for coherent follow-up generations (edit/fix/views).
   Child env adds `GROK_CLAUDE_MCPS_ENABLED=0` and `GROK_MEMORY=0` (so the user's own skills/MCP servers/memory don't
   leak in). Restart the process if it dies; if ACP cannot start/initialize, the provider reports
@@ -223,13 +224,17 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
   (`--sandbox workspace-write`, `-C <workspace>`, no network), `codex exec resume <id>` for fixes, output schema flag for content if available.
 - **claude**: the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`, uses the local Claude Code login, no API key), cwd =
   workspace, `allowedTools: Read, Write, Edit` only (no Bash/Web/MCP), no user settings/skills/MCP loaded
-  (`settingSources: []`), model/effort from env, session resume for fixes, abort via AbortController.
+  (`settingSources: []`), the same write-once rule appended to the preset system prompt, model/effort from env, session resume for fixes, abort via AbortController.
 - **mock**: `SLOPOS_GENERATOR=mock` — canned, realistic event streams + results for all kinds (tests, screenshots).
 
-Common pipeline (provider-independent): workspace `data/workspaces/<appId>/` with `TASK.md`, `APP_SDK.md`, current
-`App.tsx` when editing; the provider edits `App.tsx` (or `View.tsx`) + `manifest.json` (+ `world.json`); the server
-validates (imports whitelist, default export, esbuild compile) and on failure resumes the session with the errors, up to
-3 attempts. Job queue with concurrency `SLOPOS_CONCURRENCY` (default 2). Timeouts are per kind: app 10 min
+Common pipeline (provider-independent): workspace `data/workspaces/<appId>/` holds the current `App.tsx` when editing.
+The prompt inlines the task, the app style notes from APP_SDK.md, a job-time digest of that file (every hook, type, and
+component signature; the example apps are left out), and the world digest, so the provider does not need to read the
+workspace. It is asked to write `App.tsx` (or `View.tsx`), `manifest.json`, and `world.json` once each and then stop.
+Content and route prompts omit the SDK catalog. A view reuses the app session when that session is still the one we would load, and then the prompt does not repeat the SDK. The server validates (imports whitelist, default export, esbuild compile)
+and on failure resumes the session with the errors, up to 3 attempts. Create, edit, fix, and a warm view keep one session per app.
+Job queue with concurrency `SLOPOS_CONCURRENCY`
+(default 2). Timeouts are per kind: app 10 min
 (`SLOPOS_TIMEOUT_MS_APP`), view 5 min (`SLOPOS_TIMEOUT_MS_VIEW`), content 90 s (`SLOPOS_TIMEOUT_MS_CONTENT`),
 route 60 s (`SLOPOS_TIMEOUT_MS_ROUTE`). A set per-kind value wins; `SLOPOS_TIMEOUT_MS` covers any kind without one.
 Cancel stays. Availability probe at startup + cached 60s; auth failures → clear "<Provider> isn't signed in — run `<cli>`
