@@ -53,7 +53,8 @@ export function Dock() {
             onMenu={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              setMenu({ x: event.clientX, y: event.clientY, appId: app.id })
+              const top = event.currentTarget.getBoundingClientRect().top
+              setMenu({ x: event.clientX, y: top, appId: app.id })
             }}
           />
         )

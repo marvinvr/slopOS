@@ -55,7 +55,7 @@ export function Desktop() {
 
   function onContextMenu(event: MouseEvent) {
     const target = event.target as HTMLElement
-    if (target.closest('.shell-window, .shell-dock, .shell-menubar, .shell-backdrop, .shell-about, .shell-toast, .shell-menu-pop, .shell-welcome, .shell-confirm, .shell-confirm-backdrop, .shell-switcher')) {
+    if (target.closest('.shell-window, .shell-dock, .shell-menubar, .shell-backdrop, .shell-about, .shell-toast, .shell-menu-pop, .shell-welcome, .shell-confirm, .shell-confirm-backdrop, .shell-switcher, .shell-switcher-layer')) {
       return
     }
     event.preventDefault()

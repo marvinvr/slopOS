@@ -1269,13 +1269,23 @@ button.shell-drawer-app {
   outline-offset: 2px;
 }
 
-.shell-drawer-hit > span:not(.shell-tile),
-button.shell-drawer-app > span:not(.shell-tile) {
+.shell-drawer-hit > span:not(.shell-tile) {
   font-size: var(--slop-text-sm);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+button.shell-drawer-app > span:not(.shell-tile) {
+  max-width: 100%;
+  font-size: var(--slop-text-sm);
+  line-height: 1.25;
+  text-align: center;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .shell-drawer-more {
@@ -1347,6 +1357,7 @@ button.shell-drawer-app > span:not(.shell-tile) {
   width: min(640px, calc(100% - 32px));
   padding: 8px;
   border-radius: 16px;
+  background: rgba(255, 250, 244, 0.94);
   transform-origin: center top;
   animation: shell-spotlight-in 180ms var(--slop-ease);
 }
@@ -1750,28 +1761,47 @@ button.shell-drawer-app > span:not(.shell-tile) {
   display: inline-flex;
 }
 
-.shell-switcher {
+.shell-switcher-layer {
   position: absolute;
+  inset: 0;
   z-index: 66;
-  left: 50%;
-  top: 18vh;
-  transform: translateX(-50%);
   display: flex;
-  gap: 4px;
-  padding: 8px;
-  max-width: min(640px, calc(100% - 32px));
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px 12vh;
+  pointer-events: none;
+}
+
+.shell-switcher {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  max-width: min(720px, 100%);
   overflow-x: auto;
-  border-radius: 16px;
-  background: var(--slop-chrome-bg);
+  border-radius: 20px;
+  background: rgba(255, 250, 244, 0.94);
   backdrop-filter: blur(22px) saturate(1.4);
   -webkit-backdrop-filter: blur(22px) saturate(1.4);
   border: 1px solid var(--slop-border);
   box-shadow: var(--slop-shadow-lg);
-  animation: shell-spotlight-in 160ms var(--slop-ease);
+  animation: shell-switcher-in 160ms var(--slop-ease);
+}
+
+@keyframes shell-switcher-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .shell-switcher-tile {
-  width: 92px;
+  width: 104px;
   flex: none;
   border: 0;
   background: transparent;
@@ -1780,14 +1810,14 @@ button.shell-drawer-app > span:not(.shell-tile) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 8px 6px 6px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 10px 8px 8px;
+  border-radius: 16px;
   cursor: default;
 }
 
 .shell-switcher-tile.is-selected {
-  background: color-mix(in srgb, var(--slop-fg) 8%, transparent);
+  background: color-mix(in srgb, var(--slop-accent) 18%, transparent);
 }
 
 .shell-switcher-tile:focus-visible {
@@ -1795,12 +1825,40 @@ button.shell-drawer-app > span:not(.shell-tile) {
   outline-offset: 1px;
 }
 
-.shell-switcher-title {
+.shell-switcher-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.shell-switcher-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--slop-bg-elevated);
+  color: var(--slop-fg);
+  border: 1px solid var(--slop-border);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.shell-switcher-name {
   max-width: 100%;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--slop-text-xs);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1866,6 +1924,16 @@ button.shell-drawer-app > span:not(.shell-tile) {
 [data-theme='dark'] .shell-switcher {
   background: rgba(42, 38, 35, 0.94);
   border-color: rgba(255, 248, 240, 0.18);
+}
+
+[data-theme='dark'] .shell-switcher-tile.is-selected {
+  background: rgba(255, 122, 77, 0.28);
+  color: var(--slop-fg);
+}
+
+[data-theme='dark'] .shell-calendar-day.is-today {
+  background: rgba(255, 122, 77, 0.28);
+  color: var(--slop-fg);
 }
 
 [data-theme='dark'] .shell-snap-preview {
