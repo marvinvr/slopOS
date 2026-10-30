@@ -125,6 +125,16 @@ app.tsx         single file React component, `export default function App() { �
   `react` / `react/jsx-runtime` / `@slop/sdk` mapped to the runtime's globals, e.g. via an import map pointing at
   runtime-served ESM shims). Responses for runtime/bundles carry `Access-Control-Allow-Origin: *`
   (the sandboxed frame has a `null` origin).
+- `GET /runtime/frame.html` carries a `Content-Security-Policy` response header (no `<meta>` policy —
+  `frame-ancestors` is ignored in a meta tag):
+  `default-src 'self'; script-src 'self' 'sha256-…'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'self'`.
+  Each inline script is allowed by a sha256 of its body (today that is the import map), computed from the HTML that is served. External modules
+  (`bootstrap.js`, the import-map targets, app and view bundles) are `'self'`. Scripts do not get
+  `'unsafe-inline'` or `blob:`. Styles do: kit and app `<style>` tags are inline, stylesheets are same-origin.
+  `connect-src 'self'` blocks `fetch('https://…')`, WebSockets, and other cross-origin connections from the app.
+  `slopFetch` still works: the app does not fetch the URL itself; it `postMessage`s the shell, and the shell
+  calls `POST /api/proxy`. `download()` and `clipboard.write` are the same kind of host action. Remote images,
+  fonts, and stylesheets are refused. `data:` and `blob:` images are allowed.
 - Host ⇄ app communication is ONLY via `postMessage` with a small typed protocol
   (`{ slop: 1, type, id?, payload }`), request/response matched by `id`. Message types (extend as needed):
   `ready`, `theme`, `setTitle`, `setSize`, `close`, `notify`, `storage.get|set|remove|keys|read`,

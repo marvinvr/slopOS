@@ -9,11 +9,12 @@ An app that ignores it will not look like it belongs here, and may not run.
 2. Import only from `react` and `@slop/sdk`. No `react-dom`, no npm packages, no relative files, no `import()`.
 3. No external CSS, fonts, images, or scripts. Style with kit components first. A `<style>` tag is a last resort, classes prefixed with the app id (`notes-title`, never `.title`), and only tokens inside it. A big number is `<Stat>`. A day you can mark is a square `<Chip>`. Do not restyle a button to imitate either.
 4. No `localStorage` or `sessionStorage`. Persist with `useStorage` / `storage`. The frame is a sandboxed null origin.
-5. Network only through `slopFetch` (GET and POST, string bodies). Do not call `fetch`.
+5. Network only through `slopFetch` (GET and POST, string bodies). Do not call `fetch`, `WebSocket`, or `EventSource`. The frame's Content-Security-Policy allows connections to this origin only, so `fetch('https://…')` is refused even when the other server sends CORS headers.
 6. Keep the file under about 600 lines. State, helpers, and types live in that one file.
 7. Do not wrap the default export in a provider. The frame already provides the SDK.
 8. Fill the window. The root `Stack` takes `fill`. `SplitView`, `Toolbar`, and `ScrollArea grow` are how a window is built. Pad with `padding={20}` (or 16), not a raw pixel style.
 9. Build the core of the app for real. Do not fake the rest with empty handlers, "coming soon", or lorem stubs. Leave secondary destinations handler-less, or give them an `intent`. See below.
+10. The frame enforces a Content-Security-Policy. Scripts, stylesheets, fonts, and connections stay on this origin. Images may also be `data:` or `blob:`. A remote `<img>`, `<script>`, stylesheet, or font will not load. Do not work around it. `slopFetch`, `download()`, and `clipboard.write` go through the shell.
 
 ## The infinite world
 
@@ -628,7 +629,7 @@ export default function App() {
 ## Do not
 
 - Do not import anything except `react` and `@slop/sdk`.
-- Do not call `fetch`, touch `localStorage`, or load a remote font or stylesheet.
+- Do not call `fetch`, touch `localStorage`, or load a remote script, image, font, or stylesheet. The frame blocks them.
 - Do not invent CSS variables. Only `--slop-*` tokens exist.
 - Do not hand-roll a display number, a day button, or a loading frame. Use `Stat`, a square `Chip`, and `Loading`.
 - Do not return `null` while storage is loading, and do not call `setTitle` from an effect when the title is already known.
