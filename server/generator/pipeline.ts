@@ -153,7 +153,7 @@ async function runCreate(ctx: JobContext, prompt: string): Promise<GenResult> {
       kind: 'create',
       prompt,
     })
-    await finishApp(id, manifest.name, manifest.description, prompt, 'app', made.world)
+    await finishApp(id, manifest.name, manifest.description, prompt, 'app', made.world, made.source)
     return { kind: 'app', appId: id, name: manifest.name, version: manifest.version }
   } catch (err) {
     await persist.discardReserved(id)
@@ -180,7 +180,7 @@ async function runEdit(ctx: JobContext, appId: string, prompt: string): Promise<
     prompt,
     previous: loaded.manifest,
   })
-  await finishApp(appId, manifest.name, manifest.description, prompt, 'edit', made.world)
+  await finishApp(appId, manifest.name, manifest.description, prompt, 'edit', made.world, made.source)
   return { kind: 'app', appId, name: manifest.name, version: manifest.version }
 }
 
@@ -204,7 +204,7 @@ async function runRegenerate(ctx: JobContext, appId: string): Promise<GenResult>
     prompt,
     previous: loaded.manifest,
   })
-  await finishApp(appId, manifest.name, manifest.description, prompt, 'regenerate', made.world)
+  await finishApp(appId, manifest.name, manifest.description, prompt, 'regenerate', made.world, made.source)
   return { kind: 'app', appId, name: manifest.name, version: manifest.version }
 }
 
@@ -228,7 +228,7 @@ async function runFix(ctx: JobContext, appId: string, error: string): Promise<Ge
     prompt: error,
     previous: loaded.manifest,
   })
-  await finishApp(appId, manifest.name, manifest.description, error, 'fix', made.world)
+  await finishApp(appId, manifest.name, manifest.description, error, 'fix', made.world, made.source)
   return { kind: 'app', appId, name: manifest.name, version: manifest.version }
 }
 
@@ -255,7 +255,9 @@ async function runView(ctx: JobContext, appId: string, intent: string, context?:
   const viewId = viewIdFor(intent)
   await persist.saveView(appId, viewId, made.source, { intent, title: titleOf(intent) })
   await rememberView({ appId, viewId, intent, title: titleOf(intent) })
-  await mergeWorld(appId, loaded.manifest.name, made.world)
+  await mergeWorld(appId, loaded.manifest.name, made.world, undefined, 'view')
+  const keys = storageKeys(`${loaded.source}\n${made.source}`)
+  if (keys.length) await mergeDelta(appId, loaded.manifest.name, { summary: { dataShapes: keys } }, 'view')
   await rememberLog({ at: new Date().toISOString(), intent, kind: 'view', appId, summary: viewId })
   return { kind: 'view', viewId, appId }
 }
@@ -502,7 +504,7 @@ async function drive(
 
 function relay(ctx: JobContext, event: SseEvent | { type: 'thinking' | 'text' | 'tool' | 'log' | 'status'; text: string }, markThinking: () => boolean): void {
   if (event.type === 'thinking') {
-    if (markThinking()) ctx.emit({ type: 'status', step: 'thinking', text: 'Thinking' })
+    if (markThinking()) ctx.emit({ type: 'status', step: 'thinking', text: 'Sketching the layout…' })
     ctx.emit({ type: 'thinking', text: event.text })
     return
   }
@@ -516,18 +518,28 @@ function relay(ctx: JobContext, event: SseEvent | { type: 'thinking' | 'text' | 
   if (event.type === 'status' || event.type === 'text' || event.type === 'log') ctx.emit(event)
 }
 
-async function finishApp(appId: string, name: string, description: string | undefined, intent: string, kind: string, world: unknown): Promise<void> {
-  await mergeWorld(appId, name, world, description)
+async function finishApp(appId: string, name: string, description: string | undefined, intent: string, kind: string, world: unknown, source: string): Promise<void> {
+  await mergeWorld(appId, name, world, description, 'app')
+  const keys = storageKeys(source)
+  if (keys.length) await mergeDelta(appId, name, { summary: { dataShapes: keys } }, 'app')
   await rememberLog({ at: new Date().toISOString(), intent, kind, appId, summary: name })
 }
 
-async function mergeWorld(appId: string, name: string, world: unknown, description?: string): Promise<void> {
+async function mergeWorld(appId: string, name: string, world: unknown, description: string | undefined, mode: 'app' | 'view'): Promise<void> {
   const delta = normalizeDelta(world)
-  if (!delta && description) {
-    await mergeDelta(appId, name, { summary: { purpose: description } })
+  if (mode === 'app' && description && !delta?.summary?.purpose) {
+    const summary = { ...(delta?.summary || {}), purpose: description }
+    await mergeDelta(appId, name, { ...(delta || {}), summary }, mode)
     return
   }
-  await mergeDelta(appId, name, delta || { summary: { purpose: description } })
+  await mergeDelta(appId, name, delta, mode)
+}
+
+function storageKeys(source: string): string[] {
+  const keys = new Set<string>()
+  for (const match of source.matchAll(/useStorage(?:<[^>]*>)?\(\s*['"]([^'"]+)['"]/g)) keys.add(match[1])
+  for (const match of source.matchAll(/storage\.(?:get|set|remove)(?:<[^>]*>)?\(\s*['"]([^'"]+)['"]/g)) keys.add(match[1])
+  return [...keys]
 }
 
 function normalizeDelta(value: unknown): WorldDelta | null {
