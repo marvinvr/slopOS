@@ -198,7 +198,8 @@ interface GeneratorProvider {
   id: 'grok' | 'codex' | 'claude' | 'mock'
   availability(): Promise<{ available: boolean; loggedIn?: boolean; reason?: string; model: string; effort: string }>
   run(opts: { prompt: string; cwd: string; kind: 'app'|'view'|'content'|'route'; jsonSchema?: object;
-              resumeSessionId?: string; signal: AbortSignal; timeoutMs: number }): AsyncIterable<GenEvent>
+              resumeSessionId?: string; freshSession?: boolean; sessionKey?: string;
+              signal: AbortSignal; timeoutMs: number; model: string; effort: string }): AsyncIterable<GenEvent>
 }
 type GenEvent = { type: 'status'|'thinking'|'text'|'tool'|'log'; text: string }
               | { type: 'end'; sessionId?: string; output?: string /* final text / JSON */; usage?: object }
@@ -221,11 +222,8 @@ Providers (selected by `SLOPOS_GENERATOR`, default `grok`; each with `SLOPOS_<P>
   Child env adds `GROK_CLAUDE_MCPS_ENABLED=0` and `GROK_MEMORY=0` (so the user's own skills/MCP servers/memory don't
   leak in). Restart the process if it dies; if ACP cannot start/initialize, the provider reports
   unavailable with the error (shown clearly in the UI) — there is NO `grok -p` fallback.
-- **codex**: `codex exec --json` (ChatGPT login), `-m`/`-c model_reasoning_effort=…`, sandbox restricted to the workspace
-  (`--sandbox workspace-write`, `-C <workspace>`, no network), `codex exec resume <id>` for fixes, output schema flag for content if available.
-- **claude**: the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`, uses the local Claude Code login, no API key), cwd =
-  workspace, `allowedTools: Read, Write, Edit` only (no Bash/Web/MCP), no user settings/skills/MCP loaded
-  (`settingSources: []`), the same write-once rule appended to the preset system prompt, model/effort from env, session resume for fixes, abort via AbortController.
+- **codex**: `codex exec --json` (ChatGPT login). The prompt is stdin (`-`). Flags are `--skip-git-repo-check --ignore-rules -C <workspace> --sandbox workspace-write -c sandbox_workspace_write.network_access=false -c model_reasoning_effort=<effort> -c approval_policy="never"`. `-m` is omitted when the model is unset, so the CLI's own model is used. Those sandbox flags stay on `exec` even when resuming: the `resume` subcommand does not accept them, and a resumed turn without them is read-only. The form is `codex exec <flags> resume <sessionId> -`. Content and route add `--output-schema <file> -o <file>`. The schema copy lists every object property in `required` and sets `additionalProperties: false`. Edits and warm views resume the app session when the saved cwd matches.
+- **claude**: `@anthropic-ai/claude-agent-sdk` `query()` on the local Claude Code login, no API key. `permissionMode: dontAsk`, `settingSources: []`, `mcpServers: {}`, `persistSession: true`. App and view tools are only Read, Write, and Edit (`maxTurns` 16). Content and route pass no tools (`maxTurns` 2) and `outputFormat: { type: 'json_schema', schema }` using that same strict schema. `disallowedTools` is Bash, PowerShell, WebSearch, WebFetch, Task, Agent, Skill, NotebookEdit, and TodoWrite. `canUseTool` denies anything else and any path outside the workspace. The system prompt is the `claude_code` preset plus the write-once rule, or the JSON-only rule for content and route. `model` is omitted when unset. Effort is low for content and route and medium otherwise, unless an env override is set. Edits and warm views pass `resume` for the app session when the saved cwd matches. Abort is an AbortController.
 - **mock**: `SLOPOS_GENERATOR=mock` — canned, realistic event streams + results for all kinds (tests, screenshots).
 
 Common pipeline (provider-independent): workspace `data/workspaces/<appId>/` holds the current `App.tsx` when editing.
@@ -256,9 +254,7 @@ generation **kinds**, one pipeline:
 | `view`    | a screen component (View.tsx) for an existing app    | pushed onto that window's screen stack, or inline | medium          |
 | `content` | JSON data matching a schema the caller supplies      | returned to the calling app code                  | fastest         |
 
-Plus `auto`: the caller only has an intent ("Open settings", "Show invoices for ACME", "Weather in Lisbon"); the server
-decides: an existing app that clearly fits → open it; the intent belongs inside the calling app → `view`; a different
-job entirely → `app`.
+Plus `auto`: the caller only has an intent ("Open settings", "Show invoices for ACME", "Weather in Lisbon"). Spotlight and a handler-less kit button both `POST /api/gen` with `kind: "auto"`. Before a model runs, a local match opens an app when one score is at least 80 and leads the next by 15: exact name 100, exact storage key (or a single-word plural of that key) 92, every name word present in a short intent 80. Otherwise the route model answers `existing`, `view`, or `app`. A cached app result opens at once and does not start a job.
 
 ### SDK surface (runtime, owned by pass B)
 
@@ -273,6 +269,7 @@ useGenerated<T>(req: GenRequest | null): { status: 'idle'|'loading'|'ready'|'err
 openGenerative({ intent, context? })           // auto: open existing app / push a generated screen / generate an app
 useGenContext(ctx: object)                      // what's on screen right now; attached to every generative request
 useScreens(): { push(viewId|{intent,context}), pop(), stack }   // in-window screen stack (persisted per window)
+useAppData<T>(appId: string, key: string): [T | undefined, { loaded: boolean }]  // read-only, another app's store
 ```
 
 **Generative by default ("every button"):** kit `Button`, `ListItem`, `Link`/`Card` (clickable) WITHOUT an `onClick`/
@@ -316,8 +313,7 @@ POST /api/reset {confirm: "RESET"}                wipe the whole generated world
   and stored views/content. Every prompt gets a compact **world digest** (capped, most relevant first: the calling app's
   summary + its views + related entities + other apps' names/purposes) so results are coherent with what exists.
   After each generation Grok also writes `world.json` (entities/summary deltas) in its workspace; the server merges it.
-- **Models per kind** (grok defaults; overridable per provider and kind, e.g. `SLOPOS_GROK_MODEL_CONTENT`): app `grok-4.7`/medium,
-  view `grok-4.7`/medium, content `grok-4.7-build-fast`/low with no tools. Codex and Claude can pass a JSON schema flag; Grok ACP cannot, so the schema goes in the prompt and the server validates it. Queue concurrency `SLOPOS_CONCURRENCY` (default 2). Interactive view/content/route jobs start before app jobs that are still queued (FIFO inside each class, no preemption).
+- **Models per kind** (overridable per provider and kind, e.g. `SLOPOS_GROK_MODEL_CONTENT`): grok app and view `grok-4.7`/medium, grok content and route `grok-4.7-build-fast`/low with no tools. Codex and Claude omit the model, so each CLI's own default is used; their effort is medium for app and view and low for content and route. Codex and Claude receive a strict JSON schema (`--output-schema`, or the Agent SDK `outputFormat`). Grok ACP has no schema flag, so the schema goes in the prompt and the server validates it. Timeouts: app 10 min, view 5 min, content 90 s, route 60 s. Queue concurrency `SLOPOS_CONCURRENCY` (default 2). Interactive view/content/route jobs start before app jobs that are still queued (FIFO inside each class, no preemption).
 - **Persistence = continue where you left off:** apps, views, content, world, app storage, open windows with geometry
   and each window's screen stack all survive restarts and reloads.
 - **Reset slopOS:** logo menu → confirm dialog ("This erases every app and everything in this world") → `POST /api/reset`
@@ -348,11 +344,11 @@ Small deviations from the paragraphs above, recorded so later passes don't trip 
 - Storage bodies are `{ found: true, value }` for `GET /api/storage/:appId/:key` and `{ value }` for `PUT`. A missing key is `200 { found: false }` (not 404) so a first launch does not log a network error. The SDK treats `found: false` as "use the initial value". `GET /api/storage/:appId` returns `{ data }`. `DELETE /api/storage/:appId/:key` exists so `storage.remove` works.
 - `POST /api/proxy` allows `GET` and `POST` only, `http:`/`https:` only, no credentials in the URL, 15s timeout, 1MB response. The JSON result is `{ status, headers, body }`.
 - Generation is implemented in `server/generator/`. Health is `{ ok, grok: { available, loggedIn, model, effort, reason, provider } }`. The object is still called `grok`; `provider` is `grok`, `codex`, `claude`, or `mock`.
-- Grok content and route turns do not use `--json-schema`. ACP has no schema flag, so the schema is in the prompt and the server checks the JSON (one retry). Codex uses `--output-schema`. Claude uses the Agent SDK `outputFormat`.
+- Grok content and route turns do not use `--json-schema`. ACP has no schema flag, so the schema is in the prompt and the server checks the JSON (one retry). Codex uses `--output-schema`. Claude uses the Agent SDK `outputFormat`. For those two, the schema copy requires every object property and sets `additionalProperties` to false.
 - `session/load` is used only when the Grok agent advertises `loadSession`. Otherwise the session id lives only as long as that ACP process.
 - Interactive jobs (view, content, route) are picked before app jobs that have not started. A running job is not preempted. Order inside each class is FIFO.
 - `SLOPOS_DATA_DIR` selects the data directory. It is read when the server process starts, so it has to be in the environment rather than applied later from `.env`. `SLOPOS_MOCK_MS` sets the mock stream length (default 6000).
-- Per-kind model and effort: `SLOPOS_<P>_MODEL_<KIND>` and `SLOPOS_<P>_EFFORT_<KIND>`. For grok, content and route stay on the faster built-in default unless that kind override is set. Codex and claude omit `-m` / `model` when the model is unset, so the CLI's own default is used. Grok also applies model and effort with `session/set_config_option` (`model`, `reasoning_effort`) after the session opens, because the user's CLI config wins over `--reasoning-effort` in ACP mode.
+- Per-kind model and effort: `SLOPOS_<P>_MODEL_<KIND>` and `SLOPOS_<P>_EFFORT_<KIND>`. For grok, content and route stay on the faster built-in default unless that kind override is set. Codex and claude omit `-m` / `model` when the model is unset, so the CLI's own default is used. Their effort is low for content and route and medium for app and view unless overridden. Grok also applies model and effort with `session/set_config_option` (`model`, `reasoning_effort`) after the session opens, because the user's CLI config wins over `--reasoning-effort` in ACP mode.
 - Job timeouts: app 10 min, view 5 min, content 90 s, route 60 s. `SLOPOS_TIMEOUT_MS_<KIND>` overrides that kind. `SLOPOS_TIMEOUT_MS` is the fallback for kinds without their own value.
 - Fixture apps under `fixtures/apps/` load only when `SLOPOS_FIXTURES=1`, are marked `fixture: true`, and `DELETE` on them returns 403. A generated app with the same id wins.
 - The shell persists `windows[].restore` (the rect to return to after zoom) along with the fields in the settings paragraph.

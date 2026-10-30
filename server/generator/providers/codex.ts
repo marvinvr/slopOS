@@ -22,17 +22,27 @@ const availability = memoAvailability(async (): Promise<Availability> => {
 })
 
 function argsFor(opts: RunOptions, schemaPath: string | null, outPath: string | null, sessionId?: string): string[] {
-  const args = ['exec']
-  if (sessionId) args.push('resume')
-  args.push('--json', '--skip-git-repo-check')
-  if (!sessionId) {
-    args.push('--ignore-rules', '-C', path.resolve(opts.cwd), '--sandbox', 'workspace-write')
-    args.push('-c', 'sandbox_workspace_write.network_access=false')
-  }
-  args.push('-c', `model_reasoning_effort=${opts.effort}`, '-c', 'approval_policy="never"')
+  // Sandbox flags belong on `exec`, before `resume`. The resume subcommand does not
+  // accept them, and without them a resumed turn comes back read-only.
+  const args = [
+    'exec',
+    '--json',
+    '--skip-git-repo-check',
+    '--ignore-rules',
+    '-C',
+    path.resolve(opts.cwd),
+    '--sandbox',
+    'workspace-write',
+    '-c',
+    'sandbox_workspace_write.network_access=false',
+    '-c',
+    `model_reasoning_effort=${opts.effort}`,
+    '-c',
+    'approval_policy="never"',
+  ]
   if (opts.model && opts.model !== 'default') args.push('-m', opts.model)
   if (schemaPath && outPath) args.push('--output-schema', schemaPath, '-o', outPath)
-  if (sessionId) args.push(sessionId)
+  if (sessionId) args.push('resume', sessionId)
   args.push('-')
   return args
 }
