@@ -24,6 +24,7 @@ export function Desktop() {
   const provider = providerLabel(useGrokStatus().provider)
   const apps = useShell((state) => state.apps)
   const interacting = useShell((state) => state.interacting)
+  const drawerOpen = useShell((state) => state.drawerOpen)
   const theme = useShell((state) => state.theme)
   const accent = useShell((state) => state.accent)
   useShellShortcuts()
@@ -78,7 +79,7 @@ export function Desktop() {
   ]
 
   return (
-    <div className={interacting ? 'shell-desktop is-interacting' : 'shell-desktop'} onContextMenu={onContextMenu}>
+    <div className={['shell-desktop', interacting && 'is-interacting', drawerOpen && 'is-drawer'].filter(Boolean).join(' ')} onContextMenu={onContextMenu}>
       <Wallpaper />
       {loaded && apps.length === 0 ? <Invite /> : null}
       <WindowManager />
