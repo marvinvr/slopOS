@@ -289,7 +289,7 @@ Enter submits. With `onSearch`, that function runs. Without it, a non-empty quer
 
 ### NumberInput
 
-Also exported as `Stepper`. `value`, `defaultValue`, `min`, `max`, `step` (1), `size`, `disabled`, `aria-label`, `onChange(value: number)`.
+Also exported as `Stepper`. `value`, `defaultValue`, `min`, `max`, `step` (1), `size`, `disabled`, `aria-label`, `onChange(value: number)`. The control hugs its value: the number stays centered, and the minus and plus buttons are part of the same compact field. Do not stretch it to the width of the form.
 
 ### SegmentedControl
 
@@ -439,7 +439,9 @@ The bar only. Render the panel yourself.
 
 `Menu` is also exported as `DropdownMenu`. `align` is `'start'` (default) or `'end'`. An item is `{ label, shortcut?, disabled?, danger?, onSelect }` or `'separator'`.
 
-`Dialog` `width` defaults to 400. `Sheet` `side` is `'end'` (default) or `'bottom'`. Escape and the backdrop call `onClose`. These float inside the app window.
+`Dialog` `width` defaults to 400. `Sheet` `side` is `'end'` (default) or `'bottom'`. These float inside the app window.
+
+Opening a dialog or sheet focuses the first text field. With no field, focus lands on the last `variant="primary"` button. Tab stays inside. Enter activates that primary button (a textarea keeps the newline). Escape and the backdrop call `onClose`. A menu focuses its first item, moves with the arrow keys, and closes on Escape. Tooltips do not take focus. Focus rings sit on controls only — never on the dialog, the sheet, or the menu panel. `confirm(message)` uses this same dialog: Enter confirms, Escape cancels.
 
 ### Divider
 

@@ -41,6 +41,7 @@ import {
   TextArea,
   Toolbar,
   Tooltip,
+  confirm,
   useTheme,
   useWindow,
 } from '@slop/sdk'
@@ -268,6 +269,7 @@ export default function App() {
               />
               <Button size="sm" onClick={() => setDialog(true)}>Dialog</Button>
               <Button size="sm" variant="secondary" onClick={() => setSheet(true)}>Sheet</Button>
+              <Button size="sm" variant="secondary" onClick={() => { void confirm('Keep this note?').then((ok) => setSortNote(ok ? 'Kept' : 'Cancelled')) }}>Confirm</Button>
               <Button>Open a generated note</Button>
             </Row>
             <EmptyState icon="Palette" title="Nothing missing" body="Empty states get one soft shape, not a lecture." />
@@ -275,15 +277,20 @@ export default function App() {
         </Stack>
       </ScrollArea>
       <Dialog open={dialog} title="A small dialog" onClose={() => setDialog(false)}>
-        <Text>It lives inside the window, not over the desktop.</Text>
+        <Field label="Name" hint="Focus lands here. Enter confirms.">
+          <Input value={name} onChange={setName} aria-label="Dialog name" />
+        </Field>
         <Row justify="end">
           <Button variant="ghost" onClick={() => setDialog(false)}>Close</Button>
-          <Button variant="primary" onClick={() => setDialog(false)}>Okay</Button>
+          <Button variant="primary" onClick={() => { setSortNote(name); setDialog(false) }}>Okay</Button>
         </Row>
       </Dialog>
       <Sheet open={sheet} title="Details" onClose={() => setSheet(false)}>
+        <Field label="Note">
+          <Input value={notes} onChange={setNotes} aria-label="Sheet note" />
+        </Field>
         <Text muted>A sheet for a side thought. Escape or the backdrop puts it away.</Text>
-        <Button variant="secondary" onClick={() => setSheet(false)}>Done</Button>
+        <Button variant="primary" onClick={() => setSheet(false)}>Done</Button>
       </Sheet>
     </Stack>
   )

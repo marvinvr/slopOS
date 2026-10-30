@@ -67,7 +67,8 @@ function ensureListener(): void {
     const waiter = waiters.get(requestId)
     if (!waiter) return
     if (msg.type === 'gen.progress') {
-      if (payload.text) waiter.onProgress?.(payload.text)
+      const text = payload.text?.trim()
+      if (text && !text.startsWith('{') && !text.startsWith('[')) waiter.onProgress?.(text)
       return
     }
     if (msg.type === 'gen.result' && payload.result) {
