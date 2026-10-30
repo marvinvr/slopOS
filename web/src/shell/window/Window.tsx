@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { Button } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { useWindowBridge } from '../bridge/useWindowBridge'
-import { fixApp, providerLabel, useGrokStatus } from '../generation'
+import { beginWindowFix, fixApp, providerLabel, useGeneration } from '../generation'
 import { MENU_H } from '../metrics'
 import { clearEntering, isEntering, useShell, type Win } from '../store'
 
@@ -26,7 +26,9 @@ export function Window({ win }: { win: Win }) {
   const setGeometry = useShell((state) => state.setGeometry)
   const setInteracting = useShell((state) => state.setInteracting)
   const clearError = useShell((state) => state.setWindowError)
-  const generator = useGrokStatus()
+  const generation = useGeneration()
+  const generator = generation.status
+  const fixing = generation.fixing?.windowId === win.id ? generation.fixing : null
   useWindowBridge(win, iframeRef)
 
   useEffect(() => {
@@ -145,6 +147,8 @@ export function Window({ win }: { win: Win }) {
   }
 
   const src = `/runtime/frame.html?app=${encodeURIComponent(win.appId)}&v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}`
+  const provider = providerLabel(generator.provider) || 'the generator'
+  const appName = app?.name || win.title
 
   return (
     <section
@@ -182,25 +186,47 @@ export function Window({ win }: { win: Win }) {
           data-win={win.id}
           sandbox="allow-scripts allow-forms allow-modals allow-popups"
           referrerPolicy="no-referrer"
+          aria-hidden={fixing || error ? true : undefined}
         />
         {!focused ? <div className="shell-window-shield" /> : null}
-        {error ? (
-          <div className="shell-window-error">
-            <p>{error.message}</p>
-            {!app?.fixture ? (
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => {
-                  fixApp(win.appId, error.stack ? `${error.message}\n${error.stack}` : error.message)
-                }}
-              >
-                Fix with {providerLabel(generator.provider) || 'the generator'}
-              </Button>
-            ) : null}
-            <Button size="sm" variant="ghost" onClick={() => clearError(win.id, null)}>
-              Dismiss
-            </Button>
+        {fixing ? (
+          <div className="shell-window-state" role="status" aria-live="polite">
+            <div className="shell-window-card">
+              <p className="shell-window-lead">slopOS hit a snag in {fixing.appName} — {provider} is fixing it</p>
+              <p className="shell-window-status">
+                <span className="shell-window-status-dot" aria-hidden />
+                <span>{fixing.status}</span>
+              </p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="shell-window-state" role="alert">
+            <div className="shell-window-card">
+              <p className="shell-window-lead">{error.message}</p>
+              {error.stack ? (
+                <details className="shell-window-stack">
+                  <summary>Stack</summary>
+                  <pre>{error.stack}</pre>
+                </details>
+              ) : null}
+              <div className="shell-window-actions">
+                {!app?.fixture ? (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      beginWindowFix(win.id, win.appId, appName)
+                      fixApp(win.appId, error.stack ? `${error.message}\n${error.stack}` : error.message)
+                    }}
+                  >
+                    Fix with {provider}
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="ghost" onClick={() => clearError(win.id, null)}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
           </div>
         ) : null}
       </div>

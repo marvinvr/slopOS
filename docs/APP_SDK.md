@@ -52,7 +52,7 @@ While a destination is materializing, the window shows the title immediately, a 
 
 **Context.** Call `useGenContext` once near the root of the screen with a small JSON object: what this screen is, the names on it, the shape of the data. It is attached to every generative request, along with the app id and name and the current screen title. Same intent plus the same context comes back as the same saved page.
 
-**Content.** When the words themselves should be generated (an article, a summary, sample rows, search hits), use `useGenerated` with `kind: 'content'` and a JSON schema. Render `status`, `data`, `progress`, and `error`. Do not invent the paragraph while pretending it was loaded.
+**Content.** When the words themselves should be generated (an article, a summary, sample rows, search hits), use `useGenerated` with `kind: 'content'` and a JSON schema. Render `status`, `data`, `progress`, and `error`. `progress` is a short friendly line, such as “Getting ready…”, “Thinking…”, or “Putting it together…”. Do not invent the paragraph while pretending it was loaded.
 
 Generated views share this app's `useStorage`. They follow the same import rules. You do not load them yourself.
 
@@ -212,7 +212,7 @@ const article = useGenerated<Article>(req)     // pass null to stay idle
 article.status                                  // 'idle' | 'loading' | 'ready' | 'error'
 article.data
 article.error
-article.progress                                // one line, while loading
+article.progress                                // a short friendly line while loading
 article.regenerate()                            // same request, fresh
 
 useGenContext({ screen: 'Cellar', wines: names })

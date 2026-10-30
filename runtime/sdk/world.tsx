@@ -2,7 +2,7 @@ import { Component, createContext, useContext, useEffect, useMemo, useRef, useSt
 import { Button, GenerativeProvider, Heading, IconButton, Menu, Text } from '../../web/src/design/kit'
 import type { PersistedScreen } from '../protocol'
 import { frameAppId, onHostMessage, send } from './host'
-import { bindGenContext, requestGeneration, setGenAppLabel, setGenScreenLabel, type GenRequest, type GenResult } from './gen-client'
+import { bindGenContext, friendlyProgress, requestGeneration, setGenAppLabel, setGenScreenLabel, type GenRequest, type GenResult } from './gen-client'
 import { ConfirmHost } from './confirm'
 
 export type { GenRequest, GenResult }
@@ -401,12 +401,7 @@ function Materializing({ title, status, showTitle = true }: { title: string; sta
 }
 
 function calmLine(status?: string): string {
-  const text = (status || '').replace(/\s+/g, ' ').trim()
-  if (!text || text.startsWith('{') || text.startsWith('[')) return 'Sketching…'
-  if (text === 'Queued') return 'Getting ready…'
-  if (text === 'Thinking') return 'Thinking…'
-  if (text === 'Compiling') return 'Putting it together…'
-  return text.length > 96 ? `${text.slice(0, 95).trim()}…` : text
+  return friendlyProgress(status || '') ?? 'Sketching…'
 }
 
 function GenError({ message, onRetry }: { message?: string; onRetry?: () => void }) {

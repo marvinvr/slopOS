@@ -52,7 +52,12 @@ export default function App() {
         <Stack gap={16} padding={20} style={{ maxWidth: 560 }}>
           <Stack gap={6}>
             <Heading>{lede.status === 'ready' && lede.data ? lede.data.title : 'Wiki'}</Heading>
-            {lede.status === 'loading' ? <Text muted>{lede.progress || 'Writing a welcome…'}</Text> : null}
+            {lede.status === 'loading' ? (
+              <p className="slop-material-status">
+                <span className="slop-material-dot" aria-hidden />
+                <span>{lede.progress || 'Writing a welcome…'}</span>
+              </p>
+            ) : null}
             {lede.status === 'error' ? (
               <Stack gap={8}>
                 <Text muted>{lede.error}</Text>

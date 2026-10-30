@@ -852,31 +852,135 @@ body {
   cursor: nesw-resize;
 }
 
-.shell-window-error {
+.shell-window-state {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  z-index: 4;
+  inset: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--slop-radius-md);
-  background: var(--slop-bg-elevated);
-  border: 1px solid var(--slop-border);
-  box-shadow: var(--slop-shadow-sm);
-  font-size: var(--slop-text-sm);
+  justify-content: center;
+  padding: 28px 32px 36px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(90% 70% at 12% 0%, var(--slop-accent-soft), transparent 62%),
+    var(--slop-bg);
 }
 
-.shell-window-error p {
+.shell-window-card {
+  width: min(360px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  overflow: auto;
+}
+
+.shell-window-lead {
   margin: 0;
-  flex: 1;
+  font-family: var(--slop-font-display);
+  font-size: var(--slop-text-xl);
+  font-weight: 520;
+  letter-spacing: -0.02em;
+  line-height: 1.28;
+  color: var(--slop-fg);
+}
+
+.shell-window-status {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 18px;
+  font-size: var(--slop-text-sm);
+  color: var(--slop-fg-muted);
+}
+
+.shell-window-status span:last-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.shell-window-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--slop-accent);
+  animation: shell-snag-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes shell-snag-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: none; }
+}
+
+.shell-window-stack {
+  width: 100%;
+  font-size: var(--slop-text-sm);
   color: var(--slop-fg-muted);
+}
+
+.shell-window-stack summary {
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.shell-window-stack summary::-webkit-details-marker {
+  display: none;
+}
+
+.shell-window-stack summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 8px;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  border-left: 5px solid var(--slop-fg-subtle);
+  transform: translateY(-1px);
+}
+
+.shell-window-stack[open] summary::before {
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 5px solid var(--slop-fg-subtle);
+  border-bottom: 0;
+  transform: translateY(-1px);
+}
+
+.shell-window-stack pre {
+  margin: 8px 0 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: var(--slop-radius-md);
+  background: var(--slop-bg-sunken);
+  border: 1px solid var(--slop-border);
+  color: var(--slop-fg-muted);
+  font-family: var(--slop-font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.shell-window-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-window-status-dot {
+    animation: none;
+  }
 }
 
 /* Empty desk */

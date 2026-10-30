@@ -4,7 +4,7 @@ import { Button, Heading, Spinner, Stack, Text } from '../../design/kit'
 import { AppTile } from '../icons'
 import { useShell } from '../store'
 import { streamJobEvents, type JobEvent } from './api'
-import { cancelPanel, closePanel, openGenerated, providerLabel, useGeneration, type PanelJob } from './state'
+import { cancelPanel, clearFixing, closePanel, noteFixProgress, openGenerated, providerLabel, useGeneration, type PanelJob } from './state'
 
 export function GenerationPanel({ panel }: { panel: PanelJob }) {
   const status = useGeneration().status
@@ -49,6 +49,16 @@ export function GenerationPanel({ panel }: { panel: PanelJob }) {
     streamJobEvents(panel.jobId, (event) => setEvents((prev) => [...prev, event]), abort.signal).catch(() => undefined)
     return () => abort.abort()
   }, [panel.jobId])
+
+  useEffect(() => {
+    if (panel.kind !== 'fix') return
+    if (failed) {
+      clearFixing(panel.appId)
+      return
+    }
+    if (ready) return
+    noteFixProgress(panel.jobId, latestFixLine(events))
+  }, [events, failed, ready, panel.kind, panel.jobId, panel.appId])
 
   useEffect(() => {
     if (!appResult || openState !== 'idle') return
@@ -129,6 +139,15 @@ export function GenerationPanel({ panel }: { panel: PanelJob }) {
     </section>,
     document.body,
   )
+}
+
+function latestFixLine(events: JobEvent[]): string {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i]
+    if (!event || event.type === 'done' || event.type === 'error' || event.type === 'log' || event.type === 'text') continue
+    if (event.text?.trim()) return event.text
+  }
+  return 'Getting ready…'
 }
 
 function stepList(events: JobEvent[], finished: boolean): { id: string; label: string; current: boolean }[] {
