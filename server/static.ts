@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -71,6 +72,7 @@ async function sendFile(req: IncomingMessage, res: ServerResponse, file: string)
   }
   if (isTextExtension(ext)) headers.Vary = 'Accept-Encoding'
   if (encoding) headers['Content-Encoding'] = encoding
+  if (path.basename(file) === 'frame.html') headers['Content-Security-Policy'] = await frameContentSecurityPolicy(file)
   res.writeHead(200, headers)
   res.end(req.method === 'HEAD' ? undefined : payload)
   return true
@@ -90,6 +92,39 @@ async function loadPayload(file: string, mtimeMs: number, size: number, encoding
   const raw = await fs.readFile(file)
   if (!encoding) return raw
   return cachedCompress(`${file}:${mtimeMs}:${size}`, raw, encoding)
+}
+
+/**
+ * Policy for the sandboxed app frame only.
+ * The inline import map is not `'unsafe-inline'`; its sha256 is taken from the
+ * file we actually send (the build may inject modulepreload links around it).
+ * A meta policy is not added: `frame-ancestors` is ignored there.
+ */
+async function frameContentSecurityPolicy(file: string): Promise<string> {
+  const html = await fs.readFile(file, 'utf8')
+  const scriptSrc = ["'self'", ...inlineScriptHashes(html)].join(' ')
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "connect-src 'self'",
+    "img-src 'self' data: blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    "frame-ancestors 'self'",
+  ].join('; ')
+}
+
+function inlineScriptHashes(html: string): string[] {
+  const hashes: string[] = []
+  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const attrs = match[1] ?? ''
+    if (/\bsrc\s*=/i.test(attrs)) continue
+    const body = match[2] ?? ''
+    if (!body) continue
+    const digest = crypto.createHash('sha256').update(body, 'utf8').digest('base64')
+    hashes.push(`'sha256-${digest}'`)
+  }
+  return hashes
 }
 
 function safeJoin(root: string, rel: string): string | null {
