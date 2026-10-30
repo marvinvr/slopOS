@@ -788,6 +788,38 @@ body {
   background: var(--slop-bg);
 }
 
+.shell-window-boot {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  background: var(--slop-bg);
+  pointer-events: none;
+}
+
+.shell-window-boot .shell-tile {
+  animation: shell-boot-in 280ms ease both;
+}
+
+.shell-window-boot.is-leaving {
+  animation: shell-boot-out 200ms ease both;
+}
+
+.shell-window-boot.is-leaving .shell-tile {
+  animation: none;
+}
+
+@keyframes shell-boot-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes shell-boot-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 .shell-window-shield {
   position: absolute;
   inset: 0;
@@ -953,6 +985,10 @@ body {
   border-top: 5px solid var(--slop-fg-subtle);
   border-bottom: 0;
   transform: translateY(-1px);
+}
+
+.shell-window-stack:not([open]) > :not(summary) {
+  display: none;
 }
 
 .shell-window-stack pre {
@@ -1707,7 +1743,9 @@ button.shell-drawer-app > span:not(.shell-tile) {
   .shell-drawer-glyph,
   .shell-tile.is-spring,
   .shell-dock-tip,
-  .shell-status-tip {
+  .shell-status-tip,
+  .shell-window-boot,
+  .shell-window-boot .shell-tile {
     animation: none;
     transition: none;
   }

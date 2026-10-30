@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { cachedCompress, encodingFor, isTextExtension } from './compress'
 import { runtimeDir, webDir } from './paths'
 
 const MIME: Record<string, string> = {
@@ -46,20 +47,49 @@ export async function serveShell(req: IncomingMessage, res: ServerResponse): Pro
 }
 
 async function sendFile(req: IncomingMessage, res: ServerResponse, file: string): Promise<boolean> {
+  let info: Awaited<ReturnType<typeof fs.stat>>
   try {
-    const data = await fs.readFile(file)
-    const ext = path.extname(file).toLowerCase()
-    const hashed = file.includes(`${path.sep}assets${path.sep}`) || file.includes(`${path.sep}chunks${path.sep}`)
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Content-Length': data.length,
-      'Cache-Control': ext === '.html' ? 'no-cache' : hashed ? 'public, max-age=31536000, immutable' : 'no-cache',
-    })
-    res.end(req.method === 'HEAD' ? undefined : data)
-    return true
+    info = await fs.stat(file)
   } catch {
     return false
   }
+  if (!info.isFile()) return false
+  const ext = path.extname(file).toLowerCase()
+  const hashed = file.includes(`${path.sep}assets${path.sep}`) || file.includes(`${path.sep}chunks${path.sep}`)
+  const cacheControl = ext === '.html' ? 'no-cache' : hashed ? 'public, max-age=31536000, immutable' : 'no-cache'
+  const encoding = encodingFor(req, info.size, ext)
+  let payload: Buffer
+  try {
+    payload = await loadPayload(file, info.mtimeMs, info.size, encoding)
+  } catch {
+    return false
+  }
+  const headers: Record<string, string | number> = {
+    'Content-Type': MIME[ext] || 'application/octet-stream',
+    'Content-Length': payload.length,
+    'Cache-Control': cacheControl,
+  }
+  if (isTextExtension(ext)) headers.Vary = 'Accept-Encoding'
+  if (encoding) headers['Content-Encoding'] = encoding
+  res.writeHead(200, headers)
+  res.end(req.method === 'HEAD' ? undefined : payload)
+  return true
+}
+
+/** Prefer a build-time `.br` / `.gz` sibling. Otherwise compress once and keep it in memory. */
+async function loadPayload(file: string, mtimeMs: number, size: number, encoding: 'br' | 'gzip' | null): Promise<Buffer> {
+  if (encoding) {
+    const sibling = `${file}.${encoding === 'br' ? 'br' : 'gz'}`
+    try {
+      const sib = await fs.stat(sibling)
+      if (sib.isFile() && sib.size > 0 && sib.mtimeMs + 1000 >= mtimeMs) return await fs.readFile(sibling)
+    } catch {
+      /* no precompressed sibling */
+    }
+  }
+  const raw = await fs.readFile(file)
+  if (!encoding) return raw
+  return cachedCompress(`${file}:${mtimeMs}:${size}`, raw, encoding)
 }
 
 function safeJoin(root: string, rel: string): string | null {
