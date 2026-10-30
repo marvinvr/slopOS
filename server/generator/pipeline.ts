@@ -233,7 +233,9 @@ async function runFix(ctx: JobContext, appId: string, error: string): Promise<Ge
 }
 
 async function runView(ctx: JobContext, appId: string, intent: string, context?: unknown): Promise<GenResult> {
-  const loaded = await requireGenerated(appId)
+  const loaded = await getApp(appId)
+  if (!loaded) throw new GeneratorError('App not found')
+  // Screens are stored beside the app. A fixture's own source stays read-only.
   const existing = await viewsFor(appId)
   const viewIntent = [
     intent,

@@ -348,7 +348,7 @@ function ScreenStage({
 }) {
   const refreshing = screen.phase === 'loading' && Boolean(screen.viewId)
   return (
-    <div className="slop-screen">
+    <div className={screen.phase === 'loading' ? 'slop-screen is-loading' : 'slop-screen'}>
       <header className="slop-screen-bar">
         <IconButton icon="ChevronLeft" label="Back" onClick={onPop} />
         <div className="slop-screen-title">{screen.title}</div>
@@ -379,17 +379,34 @@ function ScreenStage({
 
 function Materializing({ title, status, showTitle = true }: { title: string; status?: string; showTitle?: boolean }) {
   return (
-    <div className="slop-material" role="status">
+    <div className="slop-material" role="status" aria-live="polite">
       {showTitle ? <h2 className="slop-material-title">{title}</h2> : <span className="slop-sr">{title}</span>}
       <div className="slop-skeleton" aria-hidden>
-        <div className="slop-skeleton-bar" style={{ width: '42%', height: 16 }} />
-        <div className="slop-skeleton-bar" />
-        <div className="slop-skeleton-bar" style={{ width: '86%' }} />
-        <div className="slop-skeleton-bar" style={{ width: '64%' }} />
+        {showTitle ? null : <div className="slop-skeleton-heading" />}
+        <div className="slop-skeleton-line" />
+        <div className="slop-skeleton-line is-mid" />
+        <div className="slop-skeleton-line is-short" />
+        <div className="slop-skeleton-card">
+          <div className="slop-skeleton-row" />
+          <div className="slop-skeleton-row" />
+          <div className="slop-skeleton-row is-short" />
+        </div>
       </div>
-      <p className="slop-material-status">{status || 'Sketching…'}</p>
+      <p className="slop-material-status">
+        <span className="slop-material-dot" aria-hidden />
+        <span>{calmLine(status)}</span>
+      </p>
     </div>
   )
+}
+
+function calmLine(status?: string): string {
+  const text = (status || '').replace(/\s+/g, ' ').trim()
+  if (!text || text.startsWith('{') || text.startsWith('[')) return 'Sketching…'
+  if (text === 'Queued') return 'Getting ready…'
+  if (text === 'Thinking') return 'Thinking…'
+  if (text === 'Compiling') return 'Putting it together…'
+  return text.length > 96 ? `${text.slice(0, 95).trim()}…` : text
 }
 
 function GenError({ message, onRetry }: { message?: string; onRetry?: () => void }) {
