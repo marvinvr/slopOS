@@ -189,14 +189,22 @@ export type WorldDelta = {
   entities?: { name?: string; kind?: string; description?: string }[]
 }
 
-export function mergeDelta(appId: string, name: string, delta: WorldDelta | null): Promise<void> {
+export function mergeDelta(appId: string, name: string, delta: WorldDelta | null, mode: 'app' | 'view' = 'app'): Promise<void> {
   return locked(async () => {
     const state = await readState()
     const current = state.apps[appId] || { id: appId, name, purpose: '', dataShapes: [] }
     current.name = name || current.name
-    if (delta?.summary?.purpose) current.purpose = String(delta.summary.purpose).slice(0, 280)
+    if (delta?.summary?.purpose && (mode === 'app' || !current.purpose)) {
+      current.purpose = String(delta.summary.purpose).slice(0, 280)
+    }
     if (Array.isArray(delta?.summary?.dataShapes)) {
-      current.dataShapes = delta.summary.dataShapes.filter((item) => typeof item === 'string').slice(0, 12)
+      const merged = [...current.dataShapes]
+      for (const item of delta.summary.dataShapes) {
+        if (typeof item !== 'string' || !item.trim()) continue
+        const key = item.trim().slice(0, 40)
+        if (!merged.includes(key)) merged.push(key)
+      }
+      current.dataShapes = merged.slice(0, 12)
     }
     state.apps[appId] = current
     for (const entity of delta?.entities || []) {

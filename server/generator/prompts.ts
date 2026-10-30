@@ -75,6 +75,7 @@ export async function buildPrompt(request: PromptRequest): Promise<{ prompt: str
     '- Apps and views are a single file. Imports may only come from `react` and `@slop/sdk`. No other packages, no relative files, no CSS files, no `import()`.',
     '- Use the kit components first. When you style anything yourself, use `var(--slop-…)` tokens only. The app should look native, warm, and calm. Small playful touches are welcome. Nothing flashy, neon, or glassy for its own sake.',
     '- Persist user data with `useStorage`. Do not use `localStorage`.',
+    '- An app that keeps the person’s own records (recipes, notes, habits, contacts, lists) must not open on an empty list. Declare three or four realistic items in the file, pass them as the `useStorage` initial value, and persist that same list once, only when `storage.get` for the key returns `undefined`. An empty list is not missing: it means the person deleted the items, so do not write them back. Every seed item is removed with the same control as an item they added. Prefer names from the world digest; otherwise invent ordinary ones, and list those names as entities in `world.json`. Clocks, calculators, dice, and converters start with no sample records. A view does not seed storage.',
     '- Reach the network only through `slopFetch`. Do not call `fetch`.',
     '- Keyboard friendly. Sensible empty states (`EmptyState`). Fill the window (`height: 100%` on the root).',
     '- Implement what this app is actually about. For secondary screens, settings, detail pages, and links into other domains, leave the kit `Button`, `ListItem`, or `Card` without an `onClick` (or set `intent`) so slopOS can generate that screen later. Never fake a stub or a "coming soon".',
@@ -172,9 +173,11 @@ function taskBody(request: PromptRequest): string {
     return [
       'Kind: view. Write `View.tsx` once, then `world.json` once, then stop. Do not modify `App.tsx`.',
       'The file must be exactly `export default function View({ params, context }) { ... }`.',
-      'Same import rules as an app. Views share the app’s `useStorage` keys.',
-      'Also write `world.json`: {"summary":{"purpose":"...","dataShapes":[]},"entities":[{"name":"","kind":"","description":""}]}',
-      'Omit entities you did not invent. Keep the summary to one line about this screen.',
+      'The shell already shows this screen’s title and a back chevron. Do not render a title bar, a Toolbar title, or a heading that repeats the screen name. Start with the screen’s content.',
+      'Do not call setTitle or setSize. The window title stays the app name.',
+      'Same import rules as an app. Views share the app’s useStorage keys. Do not seed storage and do not rewrite it.',
+      'Also write `world.json`: {"summary":{"purpose":"one line about this screen"},"entities":[{"name":"","kind":"","description":""}]}',
+      'Do not include dataShapes. Omit entities you did not invent.',
       `App facts (inlined; do not open App.tsx):\n${appFacts(request.currentSource)}`,
       attempt,
       request.errorText ? `Compiler errors:\n${request.errorText}` : '',
@@ -189,7 +192,7 @@ function taskBody(request: PromptRequest): string {
     '2. `manifest.json` — {"name":"","icon":"","description":"","window":{"width":720,"height":480,"minWidth":360,"minHeight":280,"resizable":true}}',
     '   name is at most 20 characters. icon is a Lucide icon name in PascalCase (Timer, StickyNote, Dices). description is one calm sentence. window size fits the UI.',
     '3. `world.json` — {"summary":{"purpose":"one line","dataShapes":["storage keys you used"]},"entities":[{"name":"","kind":"person|company|place|product|other","description":"one line"}]}',
-    '   Only entities this app actually introduces. Reuse entities from the world digest instead of renaming them.',
+    '   Only entities this app actually introduces. Reuse entities from the world digest instead of renaming them. When the app stores a list, the seed item names are entities.',
   ].join('\n')
   const inlined = request.currentSource ? `Current App.tsx (inlined; write the replacement once; do not read the file):\n\`\`\`tsx\n${request.currentSource}\n\`\`\`` : ''
   if (request.mode === 'edit') {
