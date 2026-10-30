@@ -652,6 +652,15 @@ body {
   inset: 0;
   z-index: 10;
   pointer-events: none;
+  transition: opacity 160ms var(--slop-ease);
+}
+
+/* Window chrome shows through the drawer blur as a hard edge. Fade the stage out. */
+.shell-desktop.is-drawer .shell-stage {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 160ms var(--slop-ease), visibility 0s linear 160ms;
 }
 
 .shell-snap-preview {
@@ -1868,7 +1877,8 @@ button.shell-drawer-app > span:not(.shell-tile) {
   .shell-window.is-minimizing,
   .shell-window.is-restoring,
   .shell-snap-preview,
-  .shell-switcher {
+  .shell-switcher,
+  .shell-stage {
     animation: none !important;
     transition: none !important;
   }
