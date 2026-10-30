@@ -275,6 +275,40 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useEffect(() => {
+    return onHostMessage((msg) => {
+      if (msg.type === 'screens.push') {
+        const payload = (msg.payload ?? {}) as { viewId?: string; title?: string; intent?: string }
+        if (!payload.viewId) return
+        restoreRef.current = false
+        setPublish(true)
+        setScreens((stack) => {
+          const top = stack[stack.length - 1]
+          if (top?.viewId === payload.viewId && top.phase === 'ready') return stack
+          return [
+            ...stack,
+            {
+              id: uid(),
+              title: payload.title || payload.intent || 'Page',
+              intent: payload.intent,
+              viewId: payload.viewId,
+              phase: 'ready',
+              rev: 0,
+              params: { title: payload.title || payload.intent, intent: payload.intent },
+            },
+          ]
+        })
+        return
+      }
+      if (msg.type === 'generative.open') {
+        const payload = (msg.payload ?? {}) as { intent?: string; context?: unknown }
+        const intent = payload.intent?.trim()
+        if (!intent) return
+        apiRef.current.open(intent, payload.context)
+      }
+    })
+  }, [])
+
   function retry(screen: Screen) {
     if (!screen.intent) return
     setScreens((stack) => stack.map((item) => (item.id === screen.id ? { ...item, phase: 'loading', error: undefined, progress: undefined, viewId: undefined } : item)))

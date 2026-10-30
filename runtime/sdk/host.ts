@@ -52,7 +52,7 @@ export function isForwardedShortcut(event: KeyboardEvent): boolean {
   // App drawer. Checked before the shift bail-out below.
   if (event.shiftKey && (key === 'a' || event.code === 'KeyA')) return true
   if (event.shiftKey) return false
-  return key === 'w' || key === 'm' || key === 'k' || key === ' ' || event.code === 'Space' || event.key === '`' || event.code === 'Backquote'
+  return key === 'w' || key === 'm' || key === 'k' || key === '/' || event.code === 'Slash' || key === ' ' || event.code === 'Space' || event.key === '`' || event.code === 'Backquote'
 }
 
 export function shortcutPayload(event: KeyboardEvent) {

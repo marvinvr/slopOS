@@ -54,6 +54,7 @@ type State = {
   appMenus: Record<string, WireMenu[]>
   windowErrors: Record<string, WindowError>
   aboutOpen: boolean
+  shortcutsOpen: boolean
   drawerOpen: boolean
   drawerPrompt: boolean
   spotlightOpen: boolean
@@ -89,6 +90,7 @@ type Actions = {
   setDockPins: (dockPins: string[]) => void
   toggleDockPin: (appId: string) => void
   setAboutOpen: (open: boolean) => void
+  setShortcutsOpen: (open: boolean) => void
   setDrawerOpen: (open: boolean) => void
   setDrawerPrompt: (open: boolean) => void
   setSpotlightOpen: (open: boolean) => void
@@ -113,6 +115,7 @@ export const useShell = create<State & Actions>((set, get) => ({
   appMenus: {},
   windowErrors: {},
   aboutOpen: false,
+  shortcutsOpen: false,
   drawerOpen: false,
   drawerPrompt: false,
   spotlightOpen: false,
@@ -351,6 +354,7 @@ export const useShell = create<State & Actions>((set, get) => ({
   },
 
   setAboutOpen: (aboutOpen) => set({ aboutOpen }),
+  setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   setDrawerOpen: (drawerOpen) => set({ drawerOpen, spotlightOpen: drawerOpen ? false : get().spotlightOpen }),
   setDrawerPrompt: (drawerPrompt) => set({ drawerPrompt }),
   setSpotlightOpen: (spotlightOpen) => set({ spotlightOpen, drawerOpen: spotlightOpen ? false : get().drawerOpen }),

@@ -39,6 +39,21 @@ function post(frame: HTMLIFrameElement | null, message: { type: string; payload?
   frame?.contentWindow?.postMessage({ slop: SLOP_PROTOCOL, ...message }, '*')
 }
 
+const pendingGenerative = new Map<string, { intent: string; context?: unknown }>()
+
+/** Ask an open app to generate this intent once its frame is listening. */
+export function queueGenerative(winId: string, intent: string, context?: unknown): void {
+  pendingGenerative.set(winId, { intent, context })
+}
+
+/** Post into a live app frame. Returns false when that frame is not mounted yet. */
+export function postToWindow(winId: string, message: { type: string; payload?: unknown }): boolean {
+  const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-win="${winId}"]`)
+  if (!frame?.contentWindow) return false
+  post(frame, message)
+  return true
+}
+
 async function handleMessage(win: Win, message: SlopMessage, reply: (payload: unknown) => void): Promise<void> {
   const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-win="${win.id}"]`)
   const tell = (next: { type: string; payload?: unknown }) => post(frame, next)
@@ -57,6 +72,11 @@ async function handleMessage(win: Win, message: SlopMessage, reply: (payload: un
         type: 'screens.restore',
         payload: { screens: current?.screens ?? [], appName: app?.name ?? current?.title ?? win.appId },
       })
+      const pending = pendingGenerative.get(win.id)
+      if (pending) {
+        pendingGenerative.delete(win.id)
+        post(frame, { type: 'generative.open', payload: pending })
+      }
       break
     }
     case 'setTitle':
