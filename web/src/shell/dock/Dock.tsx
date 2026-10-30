@@ -40,19 +40,24 @@ export function Dock() {
 
   return (
     <nav className="shell-dock" aria-label="Dock">
-      {shown.map((app) => (
-        <DockApp
-          key={app.id}
-          app={app}
-          live={windows.some((win) => win.appId === app.id)}
-          menuOpen={menu?.appId === app.id}
-          onMenu={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            setMenu({ x: event.clientX, y: event.clientY, appId: app.id })
-          }}
-        />
-      ))}
+      {shown.map((app) => {
+        const alive = windows.filter((win) => win.appId === app.id && win.phase !== 'closing')
+        const minimized = alive.length > 0 && alive.every((win) => win.phase === 'minimized')
+        return (
+          <DockApp
+            key={app.id}
+            app={app}
+            live={windows.some((win) => win.appId === app.id)}
+            minimized={minimized}
+            menuOpen={menu?.appId === app.id}
+            onMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              setMenu({ x: event.clientX, y: event.clientY, appId: app.id })
+            }}
+          />
+        )
+      })}
       {shown.length > 0 ? <div className="shell-dock-sep" /> : null}
       <button type="button" className="shell-dock-btn" aria-label="Apps" onClick={() => openDrawer()}>
         <span className="shell-dock-tip">Apps</span>
@@ -65,7 +70,19 @@ export function Dock() {
   )
 }
 
-function DockApp({ app, live, menuOpen, onMenu }: { app: AppManifest; live: boolean; menuOpen: boolean; onMenu: (event: MouseEvent) => void }) {
+function DockApp({
+  app,
+  live,
+  minimized,
+  menuOpen,
+  onMenu,
+}: {
+  app: AppManifest
+  live: boolean
+  minimized: boolean
+  menuOpen: boolean
+  onMenu: (event: MouseEvent) => void
+}) {
   const pulse = useShell((state) => (state.pulse?.id === app.id ? state.pulse.n : 0))
   const openApp = useShell((state) => state.openApp)
   const [sprung, setSprung] = useState(false)
@@ -87,13 +104,14 @@ function DockApp({ app, live, menuOpen, onMenu }: { app: AppManifest; live: bool
       className={cx('shell-dock-app', menuOpen && 'is-menu')}
       data-app-id={app.id}
       data-dock-app={app.id}
-      aria-label={app.name}
+      data-minimized={minimized ? 'true' : undefined}
+      aria-label={minimized ? `${app.name}, minimized` : app.name}
       onClick={() => openApp(app.id)}
       onContextMenu={onMenu}
     >
       <span className="shell-dock-tip">{app.name}</span>
       <AppTile id={app.id} icon={app.icon} tint={app.tint} className={sprung ? 'is-spring' : undefined} />
-      {live ? <span className="shell-dock-dot" /> : null}
+      {live ? <span className={cx('shell-dock-dot', minimized && 'is-hollow')} /> : null}
     </button>
   )
 }

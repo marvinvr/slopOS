@@ -16,6 +16,7 @@ import { bootShell, useShell } from './store'
 import { Toasts } from './toasts/Toasts'
 import { Wallpaper } from './wallpaper/Wallpaper'
 import { Welcome } from './welcome/Welcome'
+import { Switcher } from './window/Switcher'
 import { WindowManager } from './window/WindowManager'
 
 export function Desktop() {
@@ -54,7 +55,7 @@ export function Desktop() {
 
   function onContextMenu(event: MouseEvent) {
     const target = event.target as HTMLElement
-    if (target.closest('.shell-window, .shell-dock, .shell-menubar, .shell-backdrop, .shell-about, .shell-toast, .shell-menu-pop, .shell-welcome, .shell-confirm, .shell-confirm-backdrop')) {
+    if (target.closest('.shell-window, .shell-dock, .shell-menubar, .shell-backdrop, .shell-about, .shell-toast, .shell-menu-pop, .shell-welcome, .shell-confirm, .shell-confirm-backdrop, .shell-switcher')) {
       return
     }
     event.preventDefault()
@@ -81,6 +82,7 @@ export function Desktop() {
       <Wallpaper />
       {loaded && apps.length === 0 ? <Invite /> : null}
       <WindowManager />
+      <Switcher />
       <MenuBar />
       <Dock />
       <Toasts />

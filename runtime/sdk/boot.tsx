@@ -94,6 +94,14 @@ function installHostBridges(): void {
     },
     true,
   )
+  window.addEventListener(
+    'keyup',
+    (event) => {
+      if (event.key !== 'Control' && event.key !== 'Meta' && event.key !== 'Alt') return
+      send('keyup', shortcutPayload(event))
+    },
+    true,
+  )
   // Escape stays in the app if something there handled it (preventDefault).
   // Otherwise the shell gets it, after every listener on this turn has run.
   window.addEventListener('keydown', (event) => {

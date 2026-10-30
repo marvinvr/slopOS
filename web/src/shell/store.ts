@@ -2,11 +2,14 @@ import { nanoid } from 'nanoid'
 import { create } from 'zustand'
 import type { PersistedScreen, WireMenu } from '../../../runtime/protocol'
 import { workArea } from './metrics'
+import { snapFrame, type SnapSide, type SnapTarget } from './snap'
 import { wallpaperId } from './wallpaper/wallpapers'
 import { resolveTheme, type ThemeMode } from '../design/theme'
 import type { AppManifest, Rect, ThemeSetting } from './types'
 
-export type WinPhase = 'open' | 'minimizing' | 'minimized' | 'closing'
+export type WinPhase = 'open' | 'minimizing' | 'minimized' | 'restoring' | 'closing'
+
+export type SwitcherState = { ids: string[]; index: number; mod: 'ctrl' | 'meta' }
 
 export type Win = {
   id: string
@@ -20,6 +23,7 @@ export type Win = {
   minHeight: number
   resizable: boolean
   maximized: boolean
+  snap: SnapSide | null
   restore: Rect | null
   z: number
   phase: WinPhase
@@ -37,7 +41,7 @@ type SettingsPayload = {
   accent?: string
   wallpaper?: string
   dockPins?: string[]
-  windows?: Array<Rect & { id: string; appId: string; minimized?: boolean; maximized?: boolean; z?: number; restore?: Rect | null; screens?: PersistedScreen[] }>
+  windows?: Array<Rect & { id: string; appId: string; minimized?: boolean; maximized?: boolean; snap?: SnapSide | null; z?: number; restore?: Rect | null; screens?: PersistedScreen[] }>
   focusedWindowId?: string | null
 }
 
@@ -59,6 +63,8 @@ type State = {
   drawerPrompt: boolean
   spotlightOpen: boolean
   interacting: boolean
+  snapPreview: SnapTarget | null
+  switcher: SwitcherState | null
   loaded: boolean
   zCounter: number
   pulse: { id: string; n: number } | null
@@ -76,8 +82,18 @@ type Actions = {
   minimizeWindow: (id: string) => void
   commitMinimized: (id: string) => void
   toggleMaximize: (id: string) => void
+  snapWindow: (id: string, target: SnapTarget, fallback?: Rect) => void
+  restoreSnap: (id: string) => void
+  floatWindow: (id: string, rect: Rect) => void
+  endDrag: (id: string, preview: SnapTarget | null, fallback: Rect) => void
+  setSnapPreview: (preview: SnapTarget | null) => void
   setGeometry: (id: string, geometry: Partial<Rect>) => void
   refitMaximized: () => void
+  advanceSwitcher: (mod: 'ctrl' | 'meta') => void
+  setSwitcherIndex: (index: number) => void
+  commitSwitcher: (index?: number) => void
+  cancelSwitcher: () => void
+  commitRestored: (id: string) => void
   setTitle: (id: string, title: string) => void
   setMenus: (id: string, menus: WireMenu[]) => void
   setWindowScreens: (id: string, screens: PersistedScreen[]) => void
@@ -120,6 +136,8 @@ export const useShell = create<State & Actions>((set, get) => ({
   drawerPrompt: false,
   spotlightOpen: false,
   interacting: false,
+  snapPreview: null,
+  switcher: null,
   loaded: false,
   zCounter: 1,
   pulse: null,
@@ -146,6 +164,7 @@ export const useShell = create<State & Actions>((set, get) => ({
       zCounter,
       loaded: true,
     })
+    if (windows.some((win) => win.maximized || win.snap)) get().refitMaximized()
     if (appsLoaded && windows.length !== savedWindows.length) scheduleSave()
   },
 
@@ -189,6 +208,7 @@ export const useShell = create<State & Actions>((set, get) => ({
       minHeight: app.window.minHeight,
       resizable: app.window.resizable,
       maximized: false,
+      snap: null,
       restore: null,
       z,
       phase: 'open',
@@ -206,7 +226,11 @@ export const useShell = create<State & Actions>((set, get) => ({
     set((state) => ({
       zCounter: z,
       focusedWindowId: id,
-      windows: state.windows.map((win) => (win.id === id ? { ...win, z, phase: win.phase === 'closing' ? win.phase : 'open' } : win)),
+      windows: state.windows.map((win) => {
+        if (win.id !== id) return win
+        const phase = win.phase === 'minimized' ? 'restoring' : win.phase
+        return { ...win, z, phase }
+      }),
     }))
     scheduleSave()
   },
@@ -254,27 +278,78 @@ export const useShell = create<State & Actions>((set, get) => ({
   },
 
   toggleMaximize: (id) => {
+    const win = get().windows.find((item) => item.id === id)
+    if (!win || win.phase === 'closing') return
+    if (win.maximized) {
+      if (win.restore) get().restoreSnap(id)
+      else {
+        set((state) => ({
+          windows: state.windows.map((item) => (item.id === id ? { ...item, maximized: false, snap: null } : item)),
+        }))
+        scheduleSave()
+      }
+      return
+    }
+    get().snapWindow(id, 'max')
+  },
+
+  snapWindow: (id, target, fallback) => {
+    const win = get().windows.find((item) => item.id === id)
+    if (!win || win.phase === 'closing') return
+    if (target === 'max' && win.maximized) return
+    if (target !== 'max' && win.snap === target && !win.maximized) return
+    const current = { x: win.x, y: win.y, width: win.width, height: win.height }
+    const restore = win.restore ?? fallback ?? current
+    const frame = snapRect(win, target)
     set((state) => ({
       focusedWindowId: id,
-      windows: state.windows.map((win) => {
-        if (win.id !== id) return win
-        if (win.maximized && win.restore) {
-          return { ...win, maximized: false, x: win.restore.x, y: win.restore.y, width: win.restore.width, height: win.restore.height, restore: null, phase: 'open' }
-        }
-        const area = workArea()
-        return {
-          ...win,
-          maximized: true,
-          restore: { x: win.x, y: win.y, width: win.width, height: win.height },
-          x: area.x,
-          y: area.y,
-          width: area.width,
-          height: area.height,
-          phase: 'open',
-        }
+      windows: state.windows.map((item) => {
+        if (item.id !== id) return item
+        if (target === 'max') return { ...item, ...frame, maximized: true, snap: null, restore, phase: 'open' as const }
+        return { ...item, ...frame, maximized: false, snap: target, restore, phase: 'open' as const }
       }),
     }))
     scheduleSave()
+  },
+
+  restoreSnap: (id) => {
+    const win = get().windows.find((item) => item.id === id)
+    if (!win || win.phase === 'closing' || !win.restore || (!win.snap && !win.maximized)) return
+    const rect = win.restore
+    set((state) => ({
+      focusedWindowId: id,
+      windows: state.windows.map((item) =>
+        item.id === id ? { ...item, ...rect, snap: null, maximized: false, restore: null, phase: 'open' as const } : item,
+      ),
+    }))
+    scheduleSave()
+  },
+
+  floatWindow: (id, rect) => {
+    set((state) => ({
+      windows: state.windows.map((win) => {
+        if (win.id !== id || win.phase === 'closing') return win
+        return { ...win, ...rect, snap: null, maximized: false }
+      }),
+    }))
+  },
+
+  endDrag: (id, preview, fallback) => {
+    if (preview) {
+      get().snapWindow(id, preview, fallback)
+      return
+    }
+    const win = get().windows.find((item) => item.id === id)
+    if (!win?.restore || win.snap || win.maximized) return
+    set((state) => ({
+      windows: state.windows.map((item) => (item.id === id ? { ...item, restore: null } : item)),
+    }))
+    scheduleSave()
+  },
+
+  setSnapPreview: (snapPreview) => {
+    if (get().snapPreview === snapPreview) return
+    set({ snapPreview })
   },
 
   setGeometry: (id, geometry) => {
@@ -285,13 +360,52 @@ export const useShell = create<State & Actions>((set, get) => ({
   },
 
   refitMaximized: () => {
-    const area = workArea()
-    const any = get().windows.some((win) => win.maximized)
-    if (!any) return
+    if (!get().windows.some((win) => win.maximized || win.snap)) return
     set((state) => ({
-      windows: state.windows.map((win) => (win.maximized ? { ...win, ...area } : win)),
+      windows: state.windows.map((win) => {
+        if (win.maximized) return { ...win, ...snapRect(win, 'max') }
+        if (win.snap) return { ...win, ...snapRect(win, win.snap) }
+        return win
+      }),
     }))
     scheduleSave()
+  },
+
+  advanceSwitcher: (mod) => {
+    const current = get().switcher
+    if (current && current.ids.length) {
+      set({ switcher: { ...current, index: (current.index + 1) % current.ids.length } })
+      return
+    }
+    const ids = switcherIds(get().windows)
+    if (!ids.length) return
+    set({ switcher: { ids, index: ids.length > 1 ? 1 : 0, mod } })
+  },
+
+  setSwitcherIndex: (index) => {
+    const current = get().switcher
+    if (!current || index === current.index || index < 0 || index >= current.ids.length) return
+    set({ switcher: { ...current, index } })
+  },
+
+  commitSwitcher: (index) => {
+    const current = get().switcher
+    if (!current) return
+    const id = current.ids[index ?? current.index]
+    set({ switcher: null })
+    if (id && get().windows.some((win) => win.id === id && win.phase !== 'closing')) get().focusWindow(id)
+  },
+
+  cancelSwitcher: () => {
+    if (get().switcher) set({ switcher: null })
+  },
+
+  commitRestored: (id) => {
+    const win = get().windows.find((item) => item.id === id)
+    if (!win || win.phase !== 'restoring') return
+    set((state) => ({
+      windows: state.windows.map((item) => (item.id === id ? { ...item, phase: 'open' as const } : item)),
+    }))
   },
 
   setTitle: (id, title) => {
@@ -442,6 +556,7 @@ function scheduleSave(): void {
           height: win.height,
           minimized: win.phase === 'minimized' || win.phase === 'minimizing',
           maximized: win.maximized,
+          snap: win.maximized ? null : win.snap,
           z: win.z,
           restore: win.restore,
           screens: win.screens,
@@ -456,6 +571,8 @@ function scheduleSave(): void {
 }
 
 function windowFromSaved(saved: NonNullable<SettingsPayload['windows']>[number], app: AppManifest): Win {
+  const maximized = Boolean(saved.maximized)
+  const snap = maximized ? null : saved.snap === 'left' || saved.snap === 'right' ? saved.snap : null
   return {
     id: saved.id,
     appId: saved.appId,
@@ -467,7 +584,8 @@ function windowFromSaved(saved: NonNullable<SettingsPayload['windows']>[number],
     minWidth: app.window.minWidth,
     minHeight: app.window.minHeight,
     resizable: app.window.resizable,
-    maximized: Boolean(saved.maximized),
+    maximized,
+    snap,
     restore: saved.restore ?? null,
     z: saved.z ?? 1,
     phase: saved.minimized ? 'minimized' : 'open',
@@ -493,6 +611,22 @@ function fitSize(preferred: number, min: number, limit: number): number {
   const cap = Math.max(1, limit)
   const floor = Math.min(Math.max(1, min), cap)
   return Math.min(Math.max(preferred, floor), cap)
+}
+
+function snapRect(win: Pick<Win, 'minWidth' | 'minHeight'>, target: SnapTarget): Rect {
+  const raw = snapFrame(target)
+  const area = workArea()
+  const width = Math.min(area.width, Math.max(raw.width, win.minWidth))
+  const height = Math.min(area.height, Math.max(raw.height, win.minHeight))
+  const x = target === 'right' ? raw.x + raw.width - width : raw.x
+  return { x, y: raw.y, width, height }
+}
+
+function switcherIds(windows: Win[]): string[] {
+  return windows
+    .filter((win) => win.phase === 'open' || win.phase === 'minimized' || win.phase === 'restoring')
+    .sort((a, b) => b.z - a.z)
+    .map((win) => win.id)
 }
 
 const CASCADE = 8

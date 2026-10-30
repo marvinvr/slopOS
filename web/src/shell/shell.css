@@ -632,6 +632,13 @@ body {
   background: var(--slop-fg-muted);
 }
 
+.shell-dock-dot.is-hollow {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.25px var(--slop-fg-muted);
+}
+
 .shell-dock-sep {
   width: 1px;
   align-self: stretch;
@@ -645,6 +652,21 @@ body {
   inset: 0;
   z-index: 10;
   pointer-events: none;
+}
+
+.shell-snap-preview {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: var(--slop-radius-xl);
+  background: color-mix(in srgb, var(--slop-chrome-bg) 78%, transparent);
+  border: 1px solid var(--slop-border);
+  box-shadow: var(--slop-shadow-md);
+  transition:
+    left 140ms var(--slop-ease),
+    top 140ms var(--slop-ease),
+    width 140ms var(--slop-ease),
+    height 140ms var(--slop-ease);
 }
 
 .shell-window {
@@ -675,7 +697,8 @@ body {
 }
 
 .shell-window.is-closing,
-.shell-window.is-minimizing {
+.shell-window.is-minimizing,
+.shell-window.is-restoring {
   pointer-events: none;
 }
 
@@ -1691,11 +1714,67 @@ button.shell-drawer-app > span:not(.shell-tile) {
   display: inline-flex;
 }
 
+.shell-switcher {
+  position: absolute;
+  z-index: 66;
+  left: 50%;
+  top: 18vh;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  max-width: min(640px, calc(100% - 32px));
+  overflow-x: auto;
+  border-radius: 16px;
+  background: var(--slop-chrome-bg);
+  backdrop-filter: blur(22px) saturate(1.4);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  border: 1px solid var(--slop-border);
+  box-shadow: var(--slop-shadow-lg);
+  animation: shell-spotlight-in 160ms var(--slop-ease);
+}
+
+.shell-switcher-tile {
+  width: 92px;
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--slop-fg);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 6px;
+  border-radius: 12px;
+  cursor: default;
+}
+
+.shell-switcher-tile.is-selected {
+  background: color-mix(in srgb, var(--slop-fg) 8%, transparent);
+}
+
+.shell-switcher-tile:focus-visible {
+  outline: 2px solid var(--slop-accent);
+  outline-offset: 1px;
+}
+
+.shell-switcher-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--slop-text-xs);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shell-window,
   .shell-window.is-opening,
   .shell-window.is-closing,
-  .shell-window.is-minimizing {
+  .shell-window.is-minimizing,
+  .shell-window.is-restoring,
+  .shell-snap-preview,
+  .shell-switcher {
     animation: none !important;
     transition: none !important;
   }
@@ -1745,9 +1824,15 @@ button.shell-drawer-app > span:not(.shell-tile) {
 [data-theme='dark'] .shell-spotlight,
 [data-theme='dark'] .shell-toast,
 [data-theme='dark'] .shell-drawer-search,
-[data-theme='dark'] .shell-calendar {
+[data-theme='dark'] .shell-calendar,
+[data-theme='dark'] .shell-switcher {
   background: rgba(42, 38, 35, 0.94);
   border-color: rgba(255, 248, 240, 0.18);
+}
+
+[data-theme='dark'] .shell-snap-preview {
+  background: rgba(42, 38, 35, 0.55);
+  border-color: rgba(255, 248, 240, 0.2);
 }
 
 [data-theme='dark'] .shell-dock {
