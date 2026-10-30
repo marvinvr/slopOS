@@ -1,9 +1,8 @@
 import path from 'node:path'
 import { binFor, looksLikeAuth, settingsFor, signedOutReason } from '../config'
 import { childEnv } from '../child-env'
-import { loadSession, saveSession } from '../sessions'
 import type { Availability, GenEvent, GeneratorProvider, RunOptions } from '../types'
-import { JSON_SESSION_RULES, SCREEN_SYSTEM_PROMPT } from '../prompts'
+import { SCREEN_SYSTEM_PROMPT } from '../prompts'
 import { capture, memoAvailability, publicError } from './util'
 
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
@@ -11,10 +10,8 @@ const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 type LooseMessage = {
   type?: string
   subtype?: string
-  session_id?: string
   result?: string
   is_error?: boolean
-  structured_output?: unknown
   error?: string
   message?: { content?: Array<{ type?: string; text?: string; name?: string; input?: Record<string, unknown> }> }
 }
@@ -59,24 +56,13 @@ function pathsOf(input: Record<string, unknown> | undefined): string[] {
   return found
 }
 
-async function resolveResume(opts: RunOptions): Promise<string | undefined> {
-  if (opts.freshSession) return undefined
-  if (opts.resumeSessionId) return opts.resumeSessionId
-  if (!opts.sessionKey) return undefined
-  const saved = await loadSession(opts.sessionKey)
-  if (!saved || saved.cwd !== path.resolve(opts.cwd)) return undefined
-  return saved.sessionId
-}
-
 async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
   const sdk = await import('@anthropic-ai/claude-agent-sdk')
   const cwd = path.resolve(opts.cwd)
-  const resume = await resolveResume(opts)
   const abort = new AbortController()
   const onAbort = () => abort.abort()
   opts.signal.addEventListener('abort', onAbort, { once: true })
   let output = ''
-  let sessionId = resume
   const query = sdk.query({
     prompt: opts.prompt,
     options: {
@@ -89,26 +75,23 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
-        append: opts.kind === 'content' ? JSON_SESSION_RULES : SCREEN_SYSTEM_PROMPT,
+        append: SCREEN_SYSTEM_PROMPT,
       },
       settingSources: [],
       mcpServers: {},
       pathToClaudeCodeExecutable: binFor('claude'),
-      resume,
       abortController: abort,
       env: childEnv(),
       maxTurns: 2,
-      persistSession: true,
+      persistSession: false,
       model: opts.model && opts.model !== 'default' ? opts.model : undefined,
       effort: effortOf(opts.effort),
-      outputFormat: opts.jsonSchema ? { type: 'json_schema', schema: opts.jsonSchema } : undefined,
       canUseTool: async () => ({ behavior: 'deny', message: 'Answer in text. No tools.' }),
     },
   })
   try {
     for await (const message of query as AsyncIterable<LooseMessage>) {
       if (opts.signal.aborted) return
-      if (message.session_id) sessionId = message.session_id
       if (message.type === 'assistant') {
         if (message.error === 'authentication_failed') {
           yield { type: 'error', message: signedOutReason('claude'), auth: true }
@@ -121,7 +104,7 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
             yield { type: 'text', text: block.text }
           }
           if (block.type === 'tool_use') {
-            const file = pathsOf(block.input).map((item) => path.basename(item)).find((item) => item.endsWith('.tsx')) || pathsOf(block.input)[0]
+            const file = pathsOf(block.input)[0]
             const name = block.name || 'tool'
             yield { type: 'tool', text: file ? `${name} ${path.basename(file)}` : name }
           }
@@ -134,12 +117,8 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
         yield { type: 'error', message: publicError(text), auth: looksLikeAuth(text) }
         return
       }
-      if (message.structured_output !== undefined) output = JSON.stringify(message.structured_output)
-      else if (message.result) output = message.result
-      if (sessionId && opts.sessionKey) {
-        await saveSession(opts.sessionKey, { sessionId, model: opts.model, effort: opts.effort, cwd })
-      }
-      yield { type: 'end', sessionId, output }
+      if (message.result) output = message.result
+      yield { type: 'end', output }
       return
     }
     if (!opts.signal.aborted) yield { type: 'error', message: 'Claude ended without a result' }

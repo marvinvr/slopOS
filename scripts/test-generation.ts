@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-type Event = { type: string; text?: string; message?: string; result?: { kind?: string; appId?: string; name?: string; data?: unknown; viewId?: string } }
+type Event = { type: string; text?: string; message?: string; result?: { kind?: string; appId?: string; name?: string; viewId?: string } }
 
 async function main(): Promise<void> {
   const port = await freePort()
@@ -23,7 +23,6 @@ async function main(): Promise<void> {
       SLOPOS_GENERATOR: 'mock',
       SLOPOS_DATA_DIR: data,
       SLOPOS_MOCK_MS: '80',
-      SLOPOS_FIXTURES: '0',
       SLOPOS_CONCURRENCY: '2',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -44,12 +43,17 @@ async function main(): Promise<void> {
     const created = await runJob(base, '/api/apps/generate', { prompt: 'a pomodoro timer' })
     const appId = created.result?.appId
     assert(created.result?.kind === 'app' && appId, 'create should return an app')
-    const app = await json<{ manifest: { name: string; icon: string; version: number }; source: string }>(base, `/api/apps/${appId}`)
-    assert(app.source.includes('useStorage'), 'pomodoro should persist with useStorage')
-    assert(app.source.includes('slop-mark v1'), 'first version should be marked v1')
-    assert(app.source.includes('export default function App'), 'app needs a default function App')
+    const app = await json<{ manifest: { name: string; icon: string; version: number }; html: string }>(base, `/api/apps/${appId}`)
+    assert(app.html.includes('slop-mark v1'), 'first version should be marked v1')
+    assert(app.html.includes('<script>'), 'the screen keeps its own script')
     assert(app.manifest.name.length <= 20 && app.manifest.name.length > 0, 'name should be at most 20 characters')
-    assert(created.events.some((event) => event.type === 'status' && event.text === 'Compiling'), 'pipeline should compile')
+
+    const screen = await fetch(`${base}/api/apps/${appId}/screens/root`)
+    const doc = await screen.text()
+    const csp = screen.headers.get('content-security-policy') || ''
+    assert(screen.status === 200 && doc.includes('/runtime/hook.js') && doc.includes('slop-mark v1'), 'the first screen should be served with the hook')
+    assert(doc.indexOf('/runtime/hook.js') < doc.indexOf('<script>'), 'the hook should run before the screen script')
+    assert(csp.includes("connect-src 'none'") && csp.includes("frame-ancestors 'self'"), 'the screen should carry its CSP')
 
     const matched = await json<{ cached?: boolean; result?: { kind?: string; appId?: string } }>(base, '/api/gen', {
       kind: 'auto',
@@ -59,75 +63,32 @@ async function main(): Promise<void> {
 
     const edited = await runJob(base, `/api/apps/${appId}/edit`, { prompt: 'add a short footnote' })
     assert(edited.result?.kind === 'app', 'edit should return the app')
-    const editedApp = await json<{ source: string; manifest: { version: number } }>(base, `/api/apps/${appId}`)
-    assert(editedApp.source.includes('slop-mark v2'), 'edit should write the next version')
+    const editedApp = await json<{ html: string; manifest: { version: number } }>(base, `/api/apps/${appId}`)
+    assert(editedApp.html.includes('slop-mark v2'), 'edit should write the next version')
     assert(editedApp.manifest.version === 2, 'edit should bump the version')
 
     const reverted = await json<{ version: number }>(base, `/api/apps/${appId}/revert`, { version: 1 })
     assert(reverted.version === 1, 'revert should restore version 1')
-    const restored = await json<{ source: string }>(base, `/api/apps/${appId}`)
-    assert(restored.source.includes('slop-mark v1') && !restored.source.includes('slop-mark v2'), 'reverted source should be v1')
+    const restored = await json<{ html: string }>(base, `/api/apps/${appId}`)
+    assert(restored.html.includes('slop-mark v1') && !restored.html.includes('slop-mark v2'), 'reverted screen should be v1')
 
     const removed = await fetch(`${base}/api/apps/${appId}`, { method: 'DELETE' })
     assert(removed.status === 200, 'delete should succeed')
     const gone = await fetch(`${base}/api/apps/${appId}`)
     assert(gone.status === 404, 'deleted app should be gone')
 
-    const broken = await runJob(base, '/api/apps/generate', { prompt: 'a broken checklist' })
-    assert(broken.events.some((event) => event.type === 'status' && /Fixing compile error \(attempt 2\/3\)/.test(event.text || '')), 'a broken app should be fixed once')
-    const fixedId = broken.result?.appId
-    assert(fixedId, 'fixed app should have an id')
-    const fixed = await json<{ source: string }>(base, `/api/apps/${fixedId}`)
-    assert(fixed.source.includes('export default function App'), 'the fix loop should leave a real app')
-    assert(!fixed.source.includes('function App( {'), 'the syntax error should be gone')
-
-    const schema = {
-      type: 'object',
-      additionalProperties: false,
-      required: ['title'],
-      properties: { title: { type: 'string' } },
-    }
-    const first = await json<{ jobId?: string; cached?: boolean }>(base, '/api/gen', { kind: 'content', intent: 'a title', schema, key: 'title-1' })
-    assert(first.jobId && !first.cached, 'the first content request should start a job')
-    const content = await waitJob(base, first.jobId)
-    const data = content.result?.data as { title?: string } | undefined
-    assert(content.result?.kind === 'content' && data?.title === 'sample', 'content should match the schema')
-    const second = await json<{ cached?: boolean; result?: { data?: { title?: string } } }>(base, '/api/gen', {
-      kind: 'content',
-      intent: 'a title',
-      schema,
-      key: 'title-1',
-    })
-    assert(second.cached === true && second.result?.data?.title === 'sample', 'the same key should be cached')
-
-    const [left, right] = await Promise.all([
-      json<{ jobId?: string }>(base, '/api/gen', { kind: 'content', intent: 'same', schema, key: 'dedupe-1' }),
-      json<{ jobId?: string }>(base, '/api/gen', { kind: 'content', intent: 'same', schema, key: 'dedupe-1' }),
-    ])
-    assert(left.jobId && left.jobId === right.jobId, 'in-flight requests with the same key should share a job')
-    await waitJob(base, left.jobId)
-
-    const retried = await json<{ jobId?: string }>(base, '/api/gen', {
-      kind: 'content',
-      intent: 'force-bad-json please',
-      schema,
-      key: 'bad-json',
-    })
-    assert(retried.jobId, 'schema retry should still be a job')
-    const repaired = await waitJob(base, retried.jobId)
-    assert((repaired.result?.data as { title?: string } | undefined)?.title === 'sample', 'invalid JSON should be retried once')
-    assert(repaired.events.some((event) => event.type === 'status' && event.text === 'Fixing the response'), 'the retry should say it is fixing the response')
-
     const host = await runJob(base, '/api/apps/generate', { prompt: 'a quiet reading list' })
     const hostId = host.result?.appId
     assert(hostId, 'view host app should exist')
-    const viewJob = await json<{ jobId?: string }>(base, '/api/gen', { kind: 'view', appId: hostId, intent: 'a settings screen' })
-    assert(viewJob.jobId, 'view generation should start a job')
-    const view = await waitJob(base, viewJob.jobId)
+    const ask = { kind: 'view', appId: hostId, intent: 'Clicked “Settings”', key: `${hostId}:root:settings`, context: { from: 'root' } }
+    const [left, right] = await Promise.all([json<{ jobId?: string }>(base, '/api/gen', ask), json<{ jobId?: string }>(base, '/api/gen', ask)])
+    assert(left.jobId && left.jobId === right.jobId, 'in-flight requests with the same key should share a job')
+    const view = await waitJob(base, left.jobId)
     assert(view.result?.kind === 'view' && view.result.viewId, 'view job should return a view id')
-    const bundle = await fetch(`${base}/api/apps/${hostId}/views/${view.result.viewId}/bundle.js`)
-    const code = await bundle.text()
-    assert(bundle.status === 200 && !code.startsWith('throw '), 'the view bundle should compile')
+    const again = await json<{ cached?: boolean; result?: { viewId?: string } }>(base, '/api/gen', ask)
+    assert(again.cached === true && again.result?.viewId === view.result.viewId, 'the same screen and interaction should be cached')
+    const page = await fetch(`${base}/api/apps/${hostId}/screens/${view.result.viewId}`)
+    assert(page.status === 200 && (await page.text()).includes('Show more'), 'the next screen should be served')
 
     const world = await json<{ digest?: string }>(base, '/api/world')
     assert(typeof world.digest === 'string', 'world digest should be a string')

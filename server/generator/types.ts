@@ -2,11 +2,11 @@
 
 export type ProviderId = 'grok' | 'codex' | 'claude' | 'mock'
 
-export type GenKind = 'app' | 'view' | 'content'
+export type GenKind = 'app' | 'view'
 
 export type GenEvent =
   | { type: 'status' | 'thinking' | 'text' | 'tool' | 'log'; text: string }
-  | { type: 'end'; sessionId?: string; output?: string; usage?: object }
+  | { type: 'end'; output?: string; usage?: object }
   | { type: 'error'; message: string; auth?: boolean }
 
 export type Availability = {
@@ -21,12 +21,6 @@ export type RunOptions = {
   prompt: string
   cwd: string
   kind: GenKind
-  jsonSchema?: Record<string, unknown>
-  resumeSessionId?: string
-  /** Ignore any saved session and start a new conversation (regenerate). */
-  freshSession?: boolean
-  /** Stable key for per-app session reuse. */
-  sessionKey?: string
   signal: AbortSignal
   timeoutMs: number
   model: string
@@ -41,7 +35,6 @@ export interface GeneratorProvider {
 }
 
 export type GenResult =
-  | { kind: 'content'; data: unknown }
   | { kind: 'view'; viewId: string; appId: string; title?: string }
   | { kind: 'app'; appId: string; name?: string; version?: number }
 

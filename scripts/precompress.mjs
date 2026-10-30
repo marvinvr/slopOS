@@ -19,26 +19,6 @@ async function walk(dir, files) {
   }
 }
 
-// The boot chunk's name is hashed. Point the frame at it so the iframe can
-// fetch that graph with the document, instead of after bootstrap.js returns.
-const bootstrap = await readFile('dist/runtime/bootstrap.js', 'utf8')
-const chunkHrefs = [...bootstrap.matchAll(/(?:from"|import")([^"]*chunks\/[^"]+\.js)"/g)].map((match) => {
-  const spec = match[1]
-  if (spec.startsWith('/runtime/')) return spec
-  if (spec.startsWith('./')) return `/runtime/${spec.slice(2)}`
-  if (spec.startsWith('/')) return `/runtime${spec}`
-  return `/runtime/${spec}`
-})
-const uniqueHrefs = [...new Set(chunkHrefs)]
-if (uniqueHrefs.length) {
-  const framePath = 'dist/runtime/frame.html'
-  let html = await readFile(framePath, 'utf8')
-  html = html.replace(/\n\s*<link rel="modulepreload" href="\/runtime\/chunks\/[^"]+" data-runtime-chunks \/>/g, '')
-  const links = uniqueHrefs.map((href) => `    <link rel="modulepreload" href="${href}" data-runtime-chunks />`).join('\n')
-  html = html.replace('    <script type="module" src="/runtime/bootstrap.js"></script>', `${links}\n    <script type="module" src="/runtime/bootstrap.js"></script>`)
-  await writeFile(framePath, html)
-}
-
 const files = []
 for (const root of ['dist/web', 'dist/runtime']) await walk(root, files)
 

@@ -94,7 +94,6 @@ function HistoryDialog({ appId, onClose }: { appId: string; onClose: () => void 
   const name = useShell((state) => state.apps.find((app) => app.id === appId)?.name) || 'App'
   const [rows, setRows] = useState<HistoryRow[] | null>(null)
   const [version, setVersion] = useState<number | null>(null)
-  const [fixture, setFixture] = useState(false)
   const [failed, setFailed] = useState(false)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -114,7 +113,6 @@ function HistoryDialog({ appId, onClose }: { appId: string; onClose: () => void 
         if (cancel) return
         const manifest = body.manifest ?? {}
         if (typeof manifest.version === 'number') setVersion(manifest.version)
-        setFixture(manifest.fixture === true)
         setRows(readHistory(manifest))
       })
       .catch(() => {
@@ -148,7 +146,7 @@ function HistoryDialog({ appId, onClose }: { appId: string; onClose: () => void 
             <div key={index} className="shell-history-row">
               {row.detail ? <span>{row.detail}</span> : null}
               <strong>{row.label}</strong>
-              {!fixture && typeof row.version === 'number' && row.version !== version ? (
+              {typeof row.version === 'number' && row.version !== version ? (
                 <div className="shell-history-restore">
                   <Button size="sm" variant="ghost" disabled={busy} onClick={() => restore(row.version!)}>
                     Restore

@@ -142,6 +142,13 @@ export function putCached(entry: CacheEntry): Promise<void> {
   })
 }
 
+/** The first screen changed: the next screens cached from it no longer follow. */
+export function forgetCached(appId: string): Promise<void> {
+  return locked(async () => {
+    await writeCache((await readCache()).filter((entry) => entry.appId !== appId || entry.kind === 'auto'))
+  })
+}
+
 export function forgetApp(appId: string): Promise<void> {
   return locked(async () => {
     const state = await readState()

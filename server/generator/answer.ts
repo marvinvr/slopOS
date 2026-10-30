@@ -1,15 +1,15 @@
-/** A single-shot screen answer: one json block (meta) and one tsx block (source). */
-export type ScreenAnswer = { meta: Record<string, unknown> | null; source: string | null }
+/** A single-shot screen answer: one json block (meta) and one html block (the screen). */
+export type ScreenAnswer = { meta: Record<string, unknown> | null; html: string | null }
 
 const FENCE = /```([a-zA-Z]*)[^\n]*\n/g
 
 /**
- * Read the two fenced blocks. The source block runs to the last fence in the answer,
- * so a template literal with backticks inside it does not cut the file short.
+ * Read the two fenced blocks. The html block runs to the last fence in the answer,
+ * so a script with backticks inside it does not cut the screen short.
  */
 export function parseScreenAnswer(text: string): ScreenAnswer {
   let meta: Record<string, unknown> | null = null
-  let source: string | null = null
+  let html: string | null = null
   const opens = [...text.matchAll(FENCE)]
   for (const open of opens) {
     const lang = open[1].toLowerCase()
@@ -25,15 +25,17 @@ export function parseScreenAnswer(text: string): ScreenAnswer {
       }
       continue
     }
-    if (['tsx', 'jsx', 'ts', 'typescript', 'javascript', 'js'].includes(lang) && source === null) {
+    if ((lang === 'html' || lang === 'htm') && html === null) {
       const jsonAfter = opens.find((item) => (item.index ?? 0) > start && item[1].toLowerCase() === 'json')
       const limit = jsonAfter ? (jsonAfter.index ?? text.length) : text.length
       const end = text.lastIndexOf('\n```', limit - 1)
-      source = (end > start ? text.slice(start, end) : text.slice(start, limit)).trim()
+      html = (end > start ? text.slice(start, end) : text.slice(start, limit)).trim()
     }
   }
-  if (source === null && /export\s+default\s+function/.test(text)) {
-    source = text.replace(/^```[^\n]*\n|\n```\s*$/g, '').trim()
+  // No html fence: take the markup itself when the answer is plainly HTML.
+  if (html === null) {
+    const first = text.search(/<(!doctype|html|head|body|style|div|main|section|svg|canvas)\b/i)
+    if (first >= 0) html = text.slice(first).replace(/\n```\s*$/, '').trim()
   }
-  return { meta, source }
+  return { meta, html: html || null }
 }

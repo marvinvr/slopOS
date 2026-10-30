@@ -1,0 +1,27 @@
+/* Zero-specificity defaults; the screen's own styles always win. */
+:where(html) {
+  height: 100%;
+  background: var(--slop-bg);
+  color: var(--slop-fg);
+  font-family: var(--slop-font);
+  font-size: var(--slop-text-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+:where(body) {
+  min-height: 100%;
+  margin: 0;
+}
+
+[data-lucide] {
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
+[data-lucide] > svg {
+  width: 100%;
+  height: 100%;
+}

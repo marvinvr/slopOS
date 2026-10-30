@@ -112,7 +112,6 @@ function normalizeScreens(raw: unknown): PersistedScreen[] {
       title: typeof item.title === 'string' && item.title ? item.title : 'Page',
       viewId: item.viewId,
       intent: typeof item.intent === 'string' ? item.intent : undefined,
-      params: item.params,
       context: item.context,
       key: typeof item.key === 'string' ? item.key : undefined,
       ahead: item.ahead === true ? true : undefined,

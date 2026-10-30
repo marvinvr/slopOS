@@ -7,11 +7,6 @@ const root = path.resolve(import.meta.dirname)
 export default defineConfig({
   root: path.join(root, 'web'),
   plugins: [react()],
-  resolve: {
-    alias: {
-      '@slop/sdk': path.join(root, 'runtime/sdk/index.ts'),
-    },
-  },
   build: {
     outDir: path.join(root, 'dist/web'),
     emptyOutDir: true,

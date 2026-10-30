@@ -12,7 +12,8 @@ export type AppManifest = {
     resizable: boolean
   }
   version: number
-  fixture?: boolean
+  /** Made in an older format; opening it reinstalls it. */
+  stale?: boolean
   prompt?: string
 }
 

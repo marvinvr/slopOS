@@ -1,15 +1,13 @@
 import { useEffect } from 'react'
 import { EditDialog } from './EditDialog'
 import { streamJobEvents } from './api'
-import { cancelBuild, dropBuild, failBuild, finishBuild, noteRuntimeError, refreshJobs, refreshStatus, useGeneration, type Build } from './state'
+import { cancelBuild, dropBuild, failBuild, finishBuild, refreshJobs, refreshStatus, useGeneration, type Build } from './state'
 import { useShell } from '../store'
 
-/** Keeps the job poll, one watcher per building window, the edit dialog, and the one-shot runtime fix. */
+/** Keeps the job poll, one watcher per building window, and the edit dialog. */
 export function GenerationActivity() {
   const { builds, editAppId } = useGeneration()
   const windows = useShell((state) => state.windows)
-  const errors = useShell((state) => state.windowErrors)
-  const apps = useShell((state) => state.apps)
 
   useEffect(() => {
     void refreshStatus(true)
@@ -20,17 +18,6 @@ export function GenerationActivity() {
     }, 4000)
     return () => window.clearInterval(timer)
   }, [])
-
-  useEffect(() => {
-    for (const win of windows) {
-      const error = errors[win.id]
-      if (!error) continue
-      const app = apps.find((item) => item.id === win.appId)
-      if (!app || app.fixture) continue
-      const message = error.stack ? `${error.message}\n${error.stack}` : error.message
-      noteRuntimeError(win.id, win.appId, win.version, message)
-    }
-  }, [apps, errors, windows])
 
   // Closing a window that is still opening stops its job. Changes to an existing app keep going.
   useEffect(() => {

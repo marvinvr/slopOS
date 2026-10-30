@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import { create } from 'zustand'
-import type { PersistedScreen, WireMenu } from '../../../runtime/protocol'
+import type { PersistedScreen } from '../../../runtime/protocol'
 import { workArea } from './metrics'
 import { snapFrame, type SnapSide, type SnapTarget } from './snap'
 import { wallpaperId } from './wallpaper/wallpapers'
@@ -34,7 +34,6 @@ export type Win = {
 export type Toast = { id: string; title: string; body?: string; appId?: string }
 
 export type ShellPrompt = null | { kind: 'reset' } | { kind: 'delete'; appId: string } | { kind: 'history'; appId: string }
-export type WindowError = { message: string; stack?: string }
 
 type SettingsPayload = {
   theme?: ThemeSetting
@@ -55,8 +54,6 @@ type State = {
   wallpaper: string
   dockPins: string[]
   toasts: Toast[]
-  appMenus: Record<string, WireMenu[]>
-  windowErrors: Record<string, WindowError>
   aboutOpen: boolean
   shortcutsOpen: boolean
   drawerOpen: boolean
@@ -96,9 +93,7 @@ type Actions = {
   cancelSwitcher: () => void
   commitRestored: (id: string) => void
   setTitle: (id: string, title: string) => void
-  setMenus: (id: string, menus: WireMenu[]) => void
   setWindowScreens: (id: string, screens: PersistedScreen[]) => void
-  setWindowError: (id: string, error: WindowError | null) => void
   pushToast: (title: string, body?: string, appId?: string) => void
   dismissToast: (id: string) => void
   setTheme: (theme: ThemeSetting) => void
@@ -128,8 +123,6 @@ export const useShell = create<State & Actions>((set, get) => ({
   wallpaper: 'mesh',
   dockPins: [],
   toasts: [],
-  appMenus: {},
-  windowErrors: {},
   aboutOpen: false,
   shortcutsOpen: false,
   drawerOpen: false,
@@ -247,8 +240,6 @@ export const useShell = create<State & Actions>((set, get) => ({
     const app = get().apps.find((item) => item.id === appId)
     if (!app) return
     set((state) => {
-      const windowErrors = { ...state.windowErrors }
-      delete windowErrors[id]
       const windows = state.windows.map((win) => {
         if (win.id !== id) return win
         const next = { ...win, appId, title: app.name, version: version ?? app.version, minWidth: app.window.minWidth, minHeight: app.window.minHeight, resizable: app.window.resizable }
@@ -260,7 +251,7 @@ export const useShell = create<State & Actions>((set, get) => ({
         const y = clamp(win.y, area.y, area.y + Math.max(0, area.height - height))
         return { ...next, x, y, width, height }
       })
-      return { windows, windowErrors }
+      return { windows }
     })
     bumpPulse(appId)
     scheduleSave()
@@ -289,16 +280,12 @@ export const useShell = create<State & Actions>((set, get) => ({
   removeWindow: (id) => {
     set((state) => {
       const windows = state.windows.filter((win) => win.id !== id)
-      const appMenus = { ...state.appMenus }
-      const windowErrors = { ...state.windowErrors }
-      delete appMenus[id]
-      delete windowErrors[id]
       let focusedWindowId = state.focusedWindowId
       if (focusedWindowId === id) {
         const next = windows.filter((win) => win.phase === 'open').sort((a, b) => b.z - a.z)[0]
         focusedWindowId = next?.id ?? null
       }
-      return { windows, appMenus, windowErrors, focusedWindowId }
+      return { windows, focusedWindowId }
     })
     scheduleSave()
   },
@@ -459,8 +446,6 @@ export const useShell = create<State & Actions>((set, get) => ({
     }))
   },
 
-  setMenus: (id, menus) => set((state) => ({ appMenus: { ...state.appMenus, [id]: menus } })),
-
   setWindowScreens: (id, screens) => {
     const current = get().windows.find((win) => win.id === id)
     if (!current || JSON.stringify(current.screens) === JSON.stringify(screens)) return
@@ -469,14 +454,6 @@ export const useShell = create<State & Actions>((set, get) => ({
     }))
     scheduleSave()
   },
-
-  setWindowError: (id, error) =>
-    set((state) => {
-      const windowErrors = { ...state.windowErrors }
-      if (error) windowErrors[id] = error
-      else delete windowErrors[id]
-      return { windowErrors }
-    }),
 
   pushToast: (title, body, appId) => {
     const toast: Toast = { id: nanoid(8), title, body, appId }
@@ -534,21 +511,12 @@ export const useShell = create<State & Actions>((set, get) => ({
   forgetApp: (appId) => {
     set((state) => {
       const windows = state.windows.filter((win) => win.appId !== appId)
-      const appMenus = { ...state.appMenus }
-      const windowErrors = { ...state.windowErrors }
-      for (const win of state.windows) {
-        if (win.appId !== appId) continue
-        delete appMenus[win.id]
-        delete windowErrors[win.id]
-      }
       const focusedStillOpen = windows.some((win) => win.id === state.focusedWindowId && win.phase === 'open')
       const focusedWindowId = focusedStillOpen
         ? state.focusedWindowId
         : windows.filter((win) => win.phase === 'open').sort((a, b) => b.z - a.z)[0]?.id ?? null
       return {
         windows,
-        appMenus,
-        windowErrors,
         focusedWindowId,
         apps: state.apps.filter((app) => app.id !== appId),
         dockPins: state.dockPins.filter((id) => id !== appId),

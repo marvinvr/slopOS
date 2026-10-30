@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import fs from 'node:fs/promises'
-import { appsDir, storageDir, workspacesDir, worldDir } from './paths'
+import { appsDir, workspacesDir, worldDir } from './paths'
 import { loadEnv } from './env'
 import { applyCors, sendJson } from './http'
 import { initGenerator, registerGeneratorRoutes } from './generator'
@@ -12,7 +12,6 @@ loadEnv()
 
 async function ensureDataDirs(): Promise<void> {
   await fs.mkdir(appsDir, { recursive: true })
-  await fs.mkdir(storageDir, { recursive: true })
   await fs.mkdir(workspacesDir, { recursive: true })
   await fs.mkdir(worldDir, { recursive: true })
 }

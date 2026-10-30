@@ -21,10 +21,6 @@ export type AppManifest = {
   prompt?: string
   /** Prompt history. Each entry records the kind, the text, the version it produced, and when. */
   prompts?: { at: string; prompt: string; kind?: string; version?: number }[]
-  /** True when the app was loaded from fixtures/apps via SLOPOS_FIXTURES=1. */
-  fixture?: boolean
+  /** Made in an older format without an HTML first screen. Opening it reinstalls it. */
+  stale?: boolean
 }
-
-export type CompileError = { message: string; line?: number; column?: number }
-
-export type CompileResult = { ok: true; code: string } | { ok: false; errors: CompileError[] }

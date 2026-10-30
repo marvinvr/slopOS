@@ -8,22 +8,8 @@ export type SlopMessage = {
   payload?: unknown
 }
 
-export type WireMenuItem =
-  | { type: 'item'; id: string; label: string; shortcut?: string; disabled?: boolean }
-  | { type: 'separator'; id: string }
-
-export type WireMenu = { label: string; items: WireMenuItem[] }
-
-export type MenuItem =
-  | {
-      label: string
-      shortcut?: string
-      disabled?: boolean
-      onSelect: () => void
-    }
-  | 'separator'
-
-export type MenuSpec = { label: string; items: MenuItem[] }
+/** What the person did on a screen, as the runtime hook read it off the DOM. */
+export type Interaction = { action: 'click' | 'enter' | 'change' | 'submit'; label: string; value?: string }
 
 /** A generated screen, persisted with its window and restored into the iframe. */
 export type PersistedScreen = {
@@ -31,7 +17,6 @@ export type PersistedScreen = {
   title: string
   viewId: string
   intent?: string
-  params?: unknown
   context?: unknown
   /** Cache key of the interaction that produced this screen. */
   key?: string

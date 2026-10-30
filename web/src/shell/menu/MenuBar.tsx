@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { WireMenu } from '../../../../runtime/protocol'
 import { Icon } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { useFullscreen, toggleFullscreen } from '../fullscreen'
@@ -38,7 +37,6 @@ export function MenuBar() {
   const apps = useShell((state) => state.apps)
   const windows = useShell((state) => state.windows)
   const focusedWindowId = useShell((state) => state.focusedWindowId)
-  const appMenus = useShell((state) => state.appMenus)
   const closeWindow = useShell((state) => state.closeWindow)
   const minimizeWindow = useShell((state) => state.minimizeWindow)
   const toggleMaximize = useShell((state) => state.toggleMaximize)
@@ -46,7 +44,6 @@ export function MenuBar() {
 
   const focused = windows.find((win) => win.id === focusedWindowId && win.phase === 'open')
   const app = focused ? apps.find((item) => item.id === focused.appId) : undefined
-  const menus = focused ? appMenus[focused.id] ?? [] : []
   const liveWindows = windows.filter((win) => win.phase !== 'closing').sort((a, b) => b.z - a.z)
 
   useEffect(() => {
@@ -153,7 +150,7 @@ export function MenuBar() {
       ]
     : []
 
-  const menuIds = ['logo', ...menus.map((menu) => `app:${menu.label}`), 'window', ...(app ? ['app-menu'] : [])]
+  const menuIds = ['logo', 'window', ...(app ? ['app-menu'] : [])]
 
   function openMenu(id: string) {
     setOpenId(id)
@@ -181,23 +178,6 @@ export function MenuBar() {
         onExitRight={() => neighbor('logo', 1)}
       />
       <span className="shell-appname">{app?.name ?? focused?.title ?? 'slopOS'}</span>
-      {menus.map((menu) => {
-        const id = `app:${menu.label}`
-        return (
-          <BarMenu
-            key={id}
-            menuId={id}
-            label={menu.label}
-            items={wireToItems(menu, focused?.id)}
-            open={openId === id}
-            anyOpen={openId !== null}
-            onOpen={openMenu}
-            onClose={() => setOpenId(null)}
-            onExitLeft={() => neighbor(id, -1)}
-            onExitRight={() => neighbor(id, 1)}
-          />
-        )
-      })}
       <BarMenu
         menuId="window"
         label="Window"
@@ -281,21 +261,4 @@ function BarMenu({
       ) : null}
     </div>
   )
-}
-
-function wireToItems(menu: WireMenu, windowId: string | undefined): MenuNode[] {
-  return menu.items.map((item) => {
-    if (item.type === 'separator') return { type: 'sep' }
-    return {
-      type: 'item',
-      label: item.label,
-      shortcut: item.shortcut,
-      disabled: item.disabled,
-      onSelect: () => {
-        if (!windowId) return
-        const frame = document.querySelector<HTMLIFrameElement>(`iframe[data-win="${windowId}"]`)
-        frame?.contentWindow?.postMessage({ slop: 1, type: 'menu.invoke', payload: { id: item.id } }, '*')
-      },
-    }
-  })
 }

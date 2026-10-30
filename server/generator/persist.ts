@@ -57,11 +57,11 @@ export async function ensureWorkspace(appId: string): Promise<string> {
   return dir
 }
 
-type HistoryKind = 'create' | 'edit' | 'regenerate' | 'fix'
+type HistoryKind = 'create' | 'edit' | 'regenerate'
 
 export async function saveAppVersion(input: {
   id: string
-  source: string
+  html: string
   suggested: unknown
   kind: HistoryKind
   prompt: string
@@ -90,20 +90,21 @@ export async function saveAppVersion(input: {
   }
   const dir = path.join(appsDir, input.id)
   await fs.mkdir(path.join(dir, 'versions'), { recursive: true })
-  await fs.writeFile(path.join(dir, 'app.tsx'), input.source)
-  await fs.writeFile(path.join(dir, 'versions', `${version}.tsx`), input.source)
+  await fs.writeFile(path.join(dir, 'index.html'), input.html)
+  await fs.writeFile(path.join(dir, 'versions', `${version}.html`), input.html)
   await fs.writeFile(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2))
+  // An app from the older TSX format is a plain HTML app from here on.
+  await fs.rm(path.join(dir, 'app.tsx'), { force: true })
   return manifest
 }
 
 export async function revertApp(appId: string, version: number): Promise<AppManifest | null> {
   const loaded = await getApp(appId)
-  if (!loaded || loaded.manifest.fixture) return null
+  if (!loaded) return null
   if (!Number.isInteger(version) || version < 1) return null
-  const sourcePath = path.join(appsDir, appId, 'versions', `${version}.tsx`)
-  let source: string
+  let html: string
   try {
-    source = await fs.readFile(sourcePath, 'utf8')
+    html = await fs.readFile(path.join(appsDir, appId, 'versions', `${version}.html`), 'utf8')
   } catch {
     return null
   }
@@ -117,22 +118,24 @@ export async function revertApp(appId: string, version: number): Promise<AppMani
       { at: now, prompt: `Reverted to version ${version}`, kind: 'revert', version },
     ],
   }
-  await fs.writeFile(path.join(appsDir, appId, 'app.tsx'), source)
+  await fs.writeFile(path.join(appsDir, appId, 'index.html'), html)
   await fs.writeFile(path.join(appsDir, appId, 'manifest.json'), JSON.stringify(manifest, null, 2))
   return manifest
 }
 
-export async function saveView(appId: string, viewId: string, source: string, meta: { intent: string; title?: string }): Promise<void> {
+export async function saveView(appId: string, viewId: string, html: string, meta: { intent: string; title?: string }): Promise<void> {
   const dir = path.join(appsDir, appId, 'views', viewId)
   await fs.mkdir(dir, { recursive: true })
-  await fs.writeFile(path.join(dir, 'view.tsx'), source)
+  await fs.writeFile(path.join(dir, 'view.html'), html)
   await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify({ id: viewId, ...meta, createdAt: new Date().toISOString() }, null, 2))
 }
 
-export async function readView(appId: string, viewId: string): Promise<string | null> {
+/** A screen's HTML: `root` is the first screen, anything else a later one. */
+export async function readScreen(appId: string, viewId: string): Promise<string | null> {
   if (!ID_RE.test(appId) || !ID_RE.test(viewId)) return null
+  const file = viewId === 'root' ? path.join(appsDir, appId, 'index.html') : path.join(appsDir, appId, 'views', viewId, 'view.html')
   try {
-    return await fs.readFile(path.join(appsDir, appId, 'views', viewId, 'view.tsx'), 'utf8')
+    return await fs.readFile(file, 'utf8')
   } catch {
     return null
   }

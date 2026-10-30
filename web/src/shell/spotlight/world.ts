@@ -1,8 +1,6 @@
-import { nanoid } from 'nanoid'
-import type { PersistedScreen } from '../../../../runtime/protocol'
-import { postToWindow, queueGenerative } from '../bridge/useWindowBridge'
 import { startGeneration } from '../generation'
 import { useShell } from '../store'
+import { interact, showScreen } from '../window/screens'
 
 export type WorldView = { appId: string; viewId: string; intent: string; title?: string }
 export type WorldEntity = { name: string; kind: string; description: string; appId?: string }
@@ -38,15 +36,9 @@ export function loadWorld(): Promise<WorldIndex> {
 export function openPlace(appId: string, view: WorldView): void {
   const shell = useShell.getState()
   if (!shell.apps.some((app) => app.id === appId)) return
-  const wasOpen = shell.windows.some((win) => win.appId === appId && win.phase === 'open')
   shell.openApp(appId)
   const win = useShell.getState().windows.find((item) => item.appId === appId && item.phase !== 'closing')
-  if (!win) return
-  const title = view.title?.trim() || view.intent
-  if (wasOpen && postToWindow(win.id, { type: 'screens.push', payload: { viewId: view.viewId, title, intent: view.intent } })) return
-  if (win.screens.some((screen) => screen.viewId === view.viewId)) return
-  const screen: PersistedScreen = { id: nanoid(8), title, viewId: view.viewId, intent: view.intent }
-  shell.setWindowScreens(win.id, [...win.screens, screen])
+  if (win) showScreen(win.id, view.viewId, view.title?.trim() || view.intent, view.intent)
 }
 
 /** Open the owning app and ask it to generate this entity, or start a new app when it has no owner. */
@@ -58,13 +50,10 @@ export function openThing(entity: WorldEntity): void {
     startGeneration(thingPrompt(entity), entity.name)
     return
   }
-  const wasOpen = shell.windows.some((win) => win.appId === app.id && win.phase === 'open')
   shell.openApp(app.id)
   const win = useShell.getState().windows.find((item) => item.appId === app.id && item.phase !== 'closing')
   if (!win) return
-  const context = { entity: { name: entity.name, kind: entity.kind, description: entity.description } }
-  if (wasOpen && postToWindow(win.id, { type: 'generative.open', payload: { intent, context } })) return
-  queueGenerative(win.id, intent, context)
+  interact(win.id, { action: 'click', label: intent }, [], '', { entity: { name: entity.name, kind: entity.kind, description: entity.description } })
 }
 
 function thingPrompt(entity: WorldEntity): string {

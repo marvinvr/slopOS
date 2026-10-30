@@ -1,6 +1,5 @@
 export type GenResult =
-  | { kind: 'content'; data: unknown }
-  | { kind: 'view'; viewId: string; appId: string }
+  | { kind: 'view'; viewId: string; appId: string; title?: string }
   | { kind: 'app'; appId: string; name?: string; version?: number }
 
 export type JobEvent =
@@ -44,10 +43,6 @@ export function postEdit(appId: string, prompt: string): Promise<{ jobId: string
 
 export function postRegenerate(appId: string): Promise<{ jobId: string }> {
   return post(`/api/apps/${appId}/regenerate`) as Promise<{ jobId: string }>
-}
-
-export function postFix(appId: string, error: string): Promise<{ jobId: string }> {
-  return post(`/api/apps/${appId}/fix`, { error }) as Promise<{ jobId: string }>
 }
 
 export function postRevert(appId: string, version: number): Promise<void> {

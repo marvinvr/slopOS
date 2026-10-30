@@ -15,17 +15,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["node", "vite/client"],
-    "baseUrl": ".",
-    "paths": {
-      "@slop/sdk": ["runtime/sdk/index.ts"]
-    }
+    "types": ["node", "vite/client"]
   },
   "include": [
     "server",
     "web/src",
     "runtime",
-    "fixtures",
     "scripts",
     "vite.config.ts",
     "vite.runtime.config.ts"

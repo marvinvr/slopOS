@@ -4,7 +4,7 @@ import { dismissAll, dismissOne } from './layers'
 import { useShell } from './store'
 
 // Global shortcuts live here. The runtime forwards the same chords from inside
-// an app iframe (see runtime/sdk/host.ts), including unhandled Escape.
+// an app iframe (see runtime/hook.ts), including unhandled Escape.
 // Full screen is toggled on the chord below — no second listener.
 
 export type ShortcutEvent = {

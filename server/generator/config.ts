@@ -10,15 +10,12 @@ export function providerId(): ProviderId {
 const DEFAULT_TIMEOUT = {
   app: 10 * 60 * 1000,
   view: 5 * 60 * 1000,
-  content: 90 * 1000,
 } as const
 
 type TimeoutBucket = keyof typeof DEFAULT_TIMEOUT
 
 function timeoutBucket(kind: string): TimeoutBucket {
-  if (kind === 'view') return 'view'
-  if (kind === 'content') return 'content'
-  return 'app'
+  return kind === 'view' ? 'view' : 'app'
 }
 
 /** Per-kind env wins, then SLOPOS_TIMEOUT_MS, then the built-in default for that kind. */
@@ -52,9 +49,7 @@ export function binFor(id: ProviderId): string {
 
 /**
  * Model and effort for a kind.
- * `SLOPOS_<P>_MODEL_<KIND>` / `_EFFORT_<KIND>` win.
- * Grok content keeps its faster built-in default unless that kind override is set.
- * App and view use `SLOPOS_<P>_MODEL` / `_EFFORT`, then the built-in default.
+ * `SLOPOS_<P>_MODEL_<KIND>` / `_EFFORT_<KIND>` win, then `SLOPOS_<P>_MODEL` / `_EFFORT`, then the built-in default.
  */
 export function settingsFor(id: ProviderId, kind: GenKind): { model: string; effort: string } {
   if (id === 'mock') return { model: 'mock', effort: 'mock' }
@@ -64,16 +59,9 @@ export function settingsFor(id: ProviderId, kind: GenKind): { model: string; eff
   const specificEffort = process.env[`${prefix}_EFFORT_${kindToken}`]?.trim()
   const genericModel = process.env[`${prefix}_MODEL`]?.trim()
   const genericEffort = process.env[`${prefix}_EFFORT`]?.trim()
-  const fast = kind === 'content'
-  if (id === 'grok') {
-    return {
-      model: specificModel || (fast ? 'grok-4.7-build-fast' : genericModel || 'grok-4.7'),
-      effort: specificEffort || (fast ? 'low' : genericEffort || 'medium'),
-    }
-  }
   return {
-    model: specificModel || genericModel || 'default',
-    effort: specificEffort || (fast ? 'low' : genericEffort || 'medium'),
+    model: specificModel || genericModel || (id === 'grok' ? 'grok-4.7' : 'default'),
+    effort: specificEffort || genericEffort || 'medium',
   }
 }
 

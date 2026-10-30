@@ -1,5 +1,0 @@
-import '@fontsource-variable/fraunces'
-import '@fontsource-variable/inter'
-import '@fontsource-variable/jetbrains-mono'
-import '../../web/src/design/tokens.css'
-import '../frame.css'

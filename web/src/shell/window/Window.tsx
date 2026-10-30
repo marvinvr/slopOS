@@ -1,13 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { SLOP_PROTOCOL } from '../../../../runtime/protocol'
-import { Button } from '../../design/kit'
+import { Button, IconButton } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { useWindowBridge } from '../bridge/useWindowBridge'
-import { dropBuild, fixApp, useGeneration } from '../generation'
+import { dropBuild, regenerateApp, useGeneration } from '../generation'
 import { AppTile } from '../icons'
 import { MENU_H } from '../metrics'
 import { previewAt } from '../snap'
 import { clearEntering, isEntering, isPending, useShell, type Win } from '../store'
+import { canGoForward, clearScreens, currentScreen, goBack, goForward, reloadScreen, retryScreen, usePending } from './screens'
 import { WindowSkeleton } from './Skeleton'
 
 const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
@@ -20,7 +21,6 @@ export function Window({ win }: { win: Win }) {
   const [opening, setOpening] = useState(() => isEntering(win.id))
   const focused = useShell((state) => state.focusedWindowId === win.id && win.phase !== 'minimized')
   const app = useShell((state) => state.apps.find((item) => item.id === win.appId))
-  const error = useShell((state) => state.windowErrors[win.id])
   const focusWindow = useShell((state) => state.focusWindow)
   const closeWindow = useShell((state) => state.closeWindow)
   const removeWindow = useShell((state) => state.removeWindow)
@@ -30,25 +30,39 @@ export function Window({ win }: { win: Win }) {
   const toggleMaximize = useShell((state) => state.toggleMaximize)
   const setGeometry = useShell((state) => state.setGeometry)
   const setInteracting = useShell((state) => state.setInteracting)
-  const clearError = useShell((state) => state.setWindowError)
+  const mode = useShell((state) => state.resolved)
+  const accent = useShell((state) => state.accent)
   const build = useGeneration().builds.find((item) => item.windowId === win.id)
   const pending = isPending(win.appId)
-  const building = pending ? !build?.failed : Boolean(build && !build.failed)
+  // An app from the older format has no HTML screen yet: it reinstalls the moment its window opens.
+  const stale = Boolean(app?.stale)
+  const building = pending || stale ? !build?.failed : Boolean(build && !build.failed)
   const failed = build?.failed ? build : undefined
+  const next = usePending(win.id)
+  const top = currentScreen(win)
   useWindowBridge(win, iframeRef)
-  const src = `/runtime/frame.html?app=${encodeURIComponent(win.appId)}&v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}${app?.fixture ? '&capture=0' : ''}`
+  const screenId = top?.viewId || 'root'
+  // The theme rides along only so the first paint is right; later changes arrive as messages, without a reload.
+  const theme = useRef({ mode, accent, screen: '' })
+  const screenKey = `${win.appId}:${screenId}:${win.version}`
+  if (theme.current.screen !== screenKey) theme.current = { mode, accent, screen: screenKey }
+  const src = `/api/apps/${encodeURIComponent(win.appId)}/screens/${encodeURIComponent(screenId)}?v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}&theme=${theme.current.mode}&accent=${encodeURIComponent(theme.current.accent)}`
   const [bootSrc, setBootSrc] = useState(src)
   const [boot, setBoot] = useState<'in' | 'out' | 'off'>('in')
-  // Once a window has shown the placeholder, it stays up until the app paints, so the swap is one fade.
+  // Once a window has shown the placeholder, it stays up until the screen paints, so the swap is one fade.
   const [placeheld, setPlaceheld] = useState(pending)
   if (bootSrc !== src) {
     setBootSrc(src)
     setBoot('in')
-  } else if (error && !building && boot !== 'off') {
-    setBoot('off')
-  }
-  if (building && !placeheld) setPlaceheld(true)
+    setPlaceheld(true)
+  } else if (building && !placeheld) setPlaceheld(true)
   else if (placeheld && !building && boot === 'off') setPlaceheld(false)
+
+  useEffect(() => {
+    if (!stale || build) return
+    clearScreens(win.id)
+    regenerateApp(win.appId)
+  }, [stale, build, win.id, win.appId])
 
   useEffect(() => {
     if (!opening) return
@@ -261,8 +275,9 @@ export function Window({ win }: { win: Win }) {
 
   const appName = app?.name || win.title
   const covered = building || Boolean(failed)
-  const showBoot = !covered && boot !== 'off' && !error
-  const crash = error ? (error.stack ? `${error.message}\n${error.stack}` : error.message) : ''
+  const showBoot = !covered && boot !== 'off'
+  const showBar = !covered && (win.screens.length > 0 || Boolean(next))
+  const waiting = Boolean(next && !next.failed)
 
   return (
     <section
@@ -294,19 +309,27 @@ export function Window({ win }: { win: Win }) {
         </div>
         <div className="shell-title">{win.title}</div>
       </div>
+      {showBar ? (
+        <header className={cx('shell-screen-bar', waiting && 'is-loading')}>
+          <IconButton icon="ChevronLeft" label="Back" disabled={!next && !top} onClick={() => goBack(win.id)} />
+          <IconButton icon="ChevronRight" label="Forward" disabled={Boolean(next) || !canGoForward(win)} onClick={() => goForward(win.id)} />
+          <div className="shell-screen-title">{next ? next.title : top ? top.title : appName}</div>
+          {top?.intent && !next ? <IconButton icon="RotateCw" label="Reload" onClick={() => reloadScreen(win.id)} /> : null}
+        </header>
+      ) : null}
       <div className="shell-window-body">
-        {pending ? null : (
+        {pending || stale ? null : (
           <iframe
             ref={iframeRef}
             title={win.title}
             src={src}
             data-win={win.id}
-            sandbox="allow-scripts allow-forms allow-modals allow-popups"
+            sandbox="allow-scripts allow-forms allow-modals"
             referrerPolicy="no-referrer"
-            aria-hidden={covered || error || showBoot ? true : undefined}
+            aria-hidden={covered || showBoot || next ? true : undefined}
           />
         )}
-        {building ? <WindowSkeleton label={win.title} /> : null}
+        {building || waiting ? <WindowSkeleton label={next?.title || win.title} /> : null}
         {showBoot ? (
           placeheld ? (
             <WindowSkeleton label={win.title} leaving={boot === 'out'} />
@@ -322,11 +345,11 @@ export function Window({ win }: { win: Win }) {
             <div className="shell-window-card">
               {app ? <AppTile id={app.id} icon={app.icon} tint={app.tint} size={52} /> : <AppTile id={win.appId} icon="AppWindow" tint="#7a756f" size={52} />}
               <p className="shell-window-lead">
-                {pending ? `“${win.title}” can’t be opened right now.` : failed.kind === 'fix' ? `${appName} couldn’t be reopened.` : `${appName} couldn’t be updated.`}
+                {pending ? `“${win.title}” can’t be opened right now.` : `${appName} couldn’t be updated.`}
               </p>
               <div className="shell-window-actions">
-                <Button size="sm" variant="ghost" onClick={() => (pending ? closeWindow(win.id) : dropBuild(win.id))}>
-                  {pending ? 'Close' : 'Cancel'}
+                <Button size="sm" variant="ghost" onClick={() => (pending || stale ? closeWindow(win.id) : dropBuild(win.id))}>
+                  {pending || stale ? 'Close' : 'Cancel'}
                 </Button>
                 <Button size="sm" variant="primary" onClick={failed.retry}>
                   Try Again
@@ -334,24 +357,17 @@ export function Window({ win }: { win: Win }) {
               </div>
             </div>
           </div>
-        ) : error && !building ? (
+        ) : next?.failed ? (
           <div className="shell-window-state" role="alert">
             <div className="shell-window-card">
-              {app ? <AppTile id={app.id} icon={app.icon} tint={app.tint} size={52} /> : null}
-              <p className="shell-window-lead">{appName} quit unexpectedly.</p>
-              <details className="shell-window-stack">
-                <summary>Details</summary>
-                <pre>{crash}</pre>
-              </details>
+              <p className="shell-window-lead">This page couldn’t be loaded.</p>
               <div className="shell-window-actions">
-                <Button size="sm" variant="ghost" onClick={() => clearError(win.id, null)}>
-                  Ignore
+                <Button size="sm" variant="ghost" onClick={() => goBack(win.id)}>
+                  Back
                 </Button>
-                {!app?.fixture ? (
-                  <Button size="sm" variant="primary" onClick={() => fixApp(win.appId, crash, win.id)}>
-                    Reopen
-                  </Button>
-                ) : null}
+                <Button size="sm" variant="primary" onClick={() => retryScreen(win.id)}>
+                  Try Again
+                </Button>
               </div>
             </div>
           </div>

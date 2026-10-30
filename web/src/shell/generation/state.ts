@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { useShell } from '../store'
-import { fetchJobs, postAuto, postCancel, postEdit, postFix, postRegenerate, postRevert, type GenResult, type JobInfo } from './api'
+import { fetchJobs, postAuto, postCancel, postEdit, postRegenerate, postRevert, type GenResult, type JobInfo } from './api'
 
 export type GrokStatus = {
   available: boolean
@@ -14,7 +14,7 @@ export type GrokStatus = {
 /** A job bound to a window. The window shows a placeholder until it lands. */
 export type Build = {
   windowId: string
-  kind: 'create' | 'edit' | 'regenerate' | 'fix'
+  kind: 'create' | 'edit' | 'regenerate'
   jobId?: string
   appId?: string
   failed?: boolean
@@ -37,8 +37,6 @@ let statusAt = 0
 let statusFlight: Promise<void> | null = null
 // useSyncExternalStore bails the tree if getSnapshot returns a new object every call.
 let snap: Snapshot = { status, jobs, builds, editAppId }
-
-const fresh = new Map<string, { at: number; version: number; used: boolean }>()
 
 function emit(): void {
   snap = { status, jobs, builds, editAppId }
@@ -159,7 +157,7 @@ export async function finishBuild(windowId: string, result: GenResult | undefine
     failBuild(windowId)
     return
   }
-  await openGenerated(result, build.kind !== 'fix', windowId)
+  await openGenerated(result, windowId)
   dropBuild(windowId)
 }
 
@@ -199,14 +197,8 @@ export function submitEdit(appId: string, prompt: string): void {
 export function regenerateApp(appId: string): void {
   const windowId = windowForApp(appId)
   if (!windowId) return
+  if (buildFor(windowId)) return
   const retry = () => runBuild({ windowId, kind: 'regenerate', appId, retry }, () => postRegenerate(appId))
-  retry()
-}
-
-export function fixApp(appId: string, error: string, windowId?: string): void {
-  const target = windowId ?? windowForApp(appId)
-  if (!target) return
-  const retry = () => runBuild({ windowId: target, kind: 'fix', appId, retry }, () => postFix(appId, error))
   retry()
 }
 
@@ -215,45 +207,24 @@ export async function restoreAppVersion(appId: string, version: number): Promise
   await useShell.getState().refreshApps()
   const app = useShell.getState().apps.find((item) => item.id === appId)
   const next = app?.version ?? version
-  useShell.setState((state) => {
-    const windowErrors = { ...state.windowErrors }
-    const windows = state.windows.map((win) => {
-      if (win.appId !== appId) return win
-      delete windowErrors[win.id]
-      return { ...win, version: next, title: app?.name || win.title }
-    })
-    return { windows, windowErrors }
-  })
+  useShell.setState((state) => ({
+    windows: state.windows.map((win) => (win.appId === appId ? { ...win, version: next, title: app?.name || win.title } : win)),
+  }))
 }
 
-export async function openGenerated(result: Extract<GenResult, { kind: 'app' }>, markFresh: boolean, windowId?: string): Promise<void> {
+export async function openGenerated(result: Extract<GenResult, { kind: 'app' }>, windowId?: string): Promise<void> {
   await useShell.getState().refreshApps()
   const target = windowId ? useShell.getState().windows.find((win) => win.id === windowId && win.phase !== 'closing') : undefined
   if (target && target.appId !== result.appId) useShell.getState().adoptWindow(target.id, result.appId, result.version)
   const app = useShell.getState().apps.find((item) => item.id === result.appId)
   const version = result.version || app?.version
   if (version) {
-    useShell.setState((state) => {
-      const windowErrors = { ...state.windowErrors }
-      const windows = state.windows.map((win) => {
-        if (win.appId !== result.appId) return win
-        delete windowErrors[win.id]
-        return { ...win, version, title: result.name || app?.name || win.title }
-      })
-      return { windows, windowErrors }
-    })
+    useShell.setState((state) => ({
+      windows: state.windows.map((win) => (win.appId === result.appId ? { ...win, version, title: result.name || app?.name || win.title } : win)),
+    }))
   }
-  if (markFresh && version) fresh.set(result.appId, { at: Date.now(), version, used: false })
   if (target) useShell.getState().focusWindow(target.id)
   else if (!windowId) useShell.getState().openApp(result.appId)
-}
-
-export function noteRuntimeError(windowId: string, appId: string, version: number, message: string): void {
-  const mark = fresh.get(appId)
-  if (!mark || mark.used || mark.version !== version) return
-  if (Date.now() - mark.at > 10_000) return
-  mark.used = true
-  fixApp(appId, message, windowId)
 }
 
 export function cancelBuild(windowId: string): void {

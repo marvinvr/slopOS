@@ -813,6 +813,41 @@ body {
   color: var(--slop-fg-muted);
 }
 
+/* Back, forward, the screen's title, and Reload, once a window has more than its first screen. */
+.shell-screen-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 8px 0 4px;
+  border-bottom: 1px solid var(--slop-border);
+  background: var(--slop-bg);
+  flex: none;
+  position: relative;
+}
+
+.shell-screen-bar.is-loading::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, transparent 36%, var(--slop-accent) 50%, transparent 64%, transparent 100%) 0 0 / 200% 100% repeat-x;
+  animation: shell-skel 1.6s linear infinite;
+  opacity: 0.9;
+}
+
+.shell-screen-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .shell-window-body {
   position: relative;
   flex: 1;
@@ -1149,7 +1184,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .shell-skeleton i,
-  .shell-skeleton b {
+  .shell-skeleton b,
+  .shell-screen-bar.is-loading::after {
     animation: none;
   }
 }

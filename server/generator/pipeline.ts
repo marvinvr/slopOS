@@ -1,30 +1,25 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { nanoid } from 'nanoid'
-import { compileApp } from '../apps/compile'
 import { getApp, listApps } from '../apps/registry'
-import type { CompileError } from '../apps/types'
-import { appsDir, storageDir, workspacesDir, worldDir } from '../paths'
+import { appsDir, workspacesDir, worldDir } from '../paths'
 import { clearAuthBlock } from './auth'
 import { settingsFor, timeoutFor } from './config'
 import * as persist from './persist'
 import { parseScreenAnswer } from './answer'
-import { buildPrompt, repairPrompt, type PromptRequest } from './prompts'
+import { buildPrompt, type PromptRequest } from './prompts'
 import { getProvider } from './providers/load'
 import { cancelAll, dropJobs, enqueue, flushPersist, jobForKey, silenceJobs, type JobContext } from './queue'
 import { runProvider } from './runner'
-import { parseJsonText, strictOutputSchema, validateJson } from './schema'
-import { clearSessions } from './sessions'
 import { GeneratorError, type GenKind, type GenResult, type SseEvent } from './types'
-import { cacheKeyOf, getCached, mergeDelta, putCached, rememberLog, rememberView, worldDigest, worldSnapshot, type WorldDelta } from './world'
+import { cacheKeyOf, forgetCached, getCached, mergeDelta, putCached, rememberLog, rememberView, worldDigest, worldSnapshot, type WorldDelta } from './world'
 
 type GenBody = {
   appId?: string
   windowId?: string
-  kind: 'auto' | 'app' | 'view' | 'content'
+  kind: 'auto' | 'app' | 'view'
   intent: string
   context?: unknown
-  schema?: Record<string, unknown>
   key?: string
   fresh?: boolean
 }
@@ -57,16 +52,6 @@ export async function startRegenerate(appId: string): Promise<string> {
     appId,
     interactive: false,
     run: (ctx) => runRegenerate(ctx, appId),
-  })
-}
-
-export async function startFix(appId: string, error: string): Promise<string> {
-  return enqueue({
-    kind: 'fix',
-    prompt: error,
-    appId,
-    interactive: false,
-    run: (ctx) => runFix(ctx, appId, error),
   })
 }
 
@@ -104,6 +89,7 @@ export async function startGen(body: GenBody): Promise<{ cached: true; result: G
 export async function revert(appId: string, version: number): Promise<AppResult> {
   const manifest = await persist.revertApp(appId, version)
   if (!manifest) return { error: 'version not found', status: 404 }
+  await forgetCached(appId)
   return { manifest }
 }
 
@@ -113,12 +99,10 @@ export async function resetEverything(): Promise<void> {
   await flushPersist()
   const provider = await getProvider()
   await provider.shutdown?.()
-  await clearSessions()
   dropJobs()
   clearAuthBlock()
   await fs.rm(path.dirname(appsDir), { recursive: true, force: true })
   await fs.mkdir(appsDir, { recursive: true })
-  await fs.mkdir(storageDir, { recursive: true })
   await fs.mkdir(workspacesDir, { recursive: true })
   await fs.mkdir(worldDir, { recursive: true })
   silenceJobs(false)
@@ -132,7 +116,6 @@ async function dispatchGen(ctx: JobContext, body: GenBody): Promise<GenResult> {
     if (!body.appId) throw new GeneratorError('view generation needs an appId')
     return runView(ctx, body.appId, body.intent, body.context)
   }
-  if (body.kind === 'content') return runContent(ctx, body)
   return runAuto(ctx, body)
 }
 
@@ -140,7 +123,7 @@ async function runCreate(ctx: JobContext, prompt: string): Promise<GenResult> {
   const id = await persist.allocateId(prompt)
   ctx.setAppId(id)
   try {
-    const made = await generateSource(ctx, {
+    const made = await generateScreen(ctx, {
       appId: id,
       kind: 'app',
       mode: 'create',
@@ -148,7 +131,7 @@ async function runCreate(ctx: JobContext, prompt: string): Promise<GenResult> {
     })
     const manifest = await persist.saveAppVersion({
       id,
-      source: made.source,
+      html: made.html,
       suggested: made.meta,
       kind: 'create',
       prompt,
@@ -164,22 +147,23 @@ async function runCreate(ctx: JobContext, prompt: string): Promise<GenResult> {
 async function runEdit(ctx: JobContext, appId: string, prompt: string): Promise<GenResult> {
   const loaded = await requireGenerated(appId)
   ctx.setAppId(appId)
-  const made = await generateSource(ctx, {
+  const made = await generateScreen(ctx, {
     appId,
     kind: 'app',
     mode: 'edit',
     intent: prompt,
-    currentSource: loaded.source,
+    currentHtml: loaded.html,
     appName: loaded.manifest.name,
   })
   const manifest = await persist.saveAppVersion({
     id: appId,
-    source: made.source,
+    html: made.html,
     suggested: made.meta,
     kind: 'edit',
     prompt,
     previous: loaded.manifest,
   })
+  await forgetCached(appId)
   await finishApp(appId, manifest.name, manifest.description, prompt, 'edit', made.meta)
   return { kind: 'app', appId, name: manifest.name, version: manifest.version }
 }
@@ -188,7 +172,7 @@ async function runRegenerate(ctx: JobContext, appId: string): Promise<GenResult>
   const loaded = await requireGenerated(appId)
   const prompt = loaded.manifest.prompt || loaded.manifest.name
   ctx.setAppId(appId)
-  const made = await generateSource(ctx, {
+  const made = await generateScreen(ctx, {
     appId,
     kind: 'app',
     mode: 'regenerate',
@@ -197,37 +181,14 @@ async function runRegenerate(ctx: JobContext, appId: string): Promise<GenResult>
   })
   const manifest = await persist.saveAppVersion({
     id: appId,
-    source: made.source,
+    html: made.html,
     suggested: made.meta,
     kind: 'regenerate',
     prompt,
     previous: loaded.manifest,
   })
+  await forgetCached(appId)
   await finishApp(appId, manifest.name, manifest.description, prompt, 'regenerate', made.meta)
-  return { kind: 'app', appId, name: manifest.name, version: manifest.version }
-}
-
-async function runFix(ctx: JobContext, appId: string, error: string): Promise<GenResult> {
-  const loaded = await requireGenerated(appId)
-  ctx.setAppId(appId)
-  const made = await generateSource(ctx, {
-    appId,
-    kind: 'app',
-    mode: 'fix',
-    intent: error,
-    errorText: error,
-    currentSource: loaded.source,
-    appName: loaded.manifest.name,
-  })
-  const manifest = await persist.saveAppVersion({
-    id: appId,
-    source: made.source,
-    suggested: made.meta,
-    kind: 'fix',
-    prompt: error,
-    previous: loaded.manifest,
-  })
-  await finishApp(appId, manifest.name, manifest.description, error, 'fix', made.meta)
   return { kind: 'app', appId, name: manifest.name, version: manifest.version }
 }
 
@@ -239,13 +200,13 @@ async function runView(ctx: JobContext, appId: string, intent: string, context?:
   if (!loaded) throw new GeneratorError('App not found')
   const screen = (context && typeof context === 'object' ? context : {}) as ScreenContext
   const from = typeof screen.from === 'string' && screen.from !== 'root' ? screen.from : null
-  const currentSource = (from && (await persist.readView(appId, from))) || loaded.source
-  const made = await generateSource(ctx, {
+  const currentHtml = (from && (await persist.readScreen(appId, from))) || loaded.html
+  const made = await generateScreen(ctx, {
     appId,
     kind: 'view',
     mode: 'view',
     intent,
-    currentSource,
+    currentHtml,
     appName: loaded.manifest.name,
     screen: {
       title: typeof screen.title === 'string' ? screen.title : undefined,
@@ -255,32 +216,11 @@ async function runView(ctx: JobContext, appId: string, intent: string, context?:
   })
   const title = titleOf(typeof made.meta?.title === 'string' && made.meta.title.trim() ? made.meta.title : intent)
   const viewId = viewIdFor(title)
-  await persist.saveView(appId, viewId, made.source, { intent, title })
+  await persist.saveView(appId, viewId, inheritStyles(currentHtml, made.html), { intent, title })
   await rememberView({ appId, viewId, intent, title })
   await mergeWorld(appId, loaded.manifest.name, { entities: made.meta?.entities }, undefined, 'view')
   await rememberLog({ at: new Date().toISOString(), intent, kind: 'view', appId, summary: title })
   return { kind: 'view', viewId, appId, title }
-}
-
-async function runContent(ctx: JobContext, body: GenBody): Promise<GenResult> {
-  const key = cacheKeyOf(body)
-  const data = await generateJson(ctx, {
-    mode: 'content',
-    kind: 'content',
-    intent: body.intent,
-    appId: body.appId,
-    schema: body.schema,
-    sessionKey: `content:${key}`,
-    cwd: await scratchDir(key),
-  })
-  await rememberLog({
-    at: new Date().toISOString(),
-    intent: body.intent,
-    kind: 'content',
-    appId: body.appId,
-    summary: summarize(data),
-  })
-  return { kind: 'content', data }
 }
 
 /** An existing app already matched in startGen. Anything else opens as a new app, without a routing turn. */
@@ -292,140 +232,46 @@ async function runAuto(ctx: JobContext, body: GenBody): Promise<GenResult> {
 async function requireGenerated(appId: string) {
   const loaded = await getApp(appId)
   if (!loaded) throw new GeneratorError('App not found')
-  if (loaded.manifest.fixture) throw new GeneratorError('Fixtures cannot be edited')
   return loaded
 }
 
-type SourceRequest = {
+type ScreenRequest = {
   appId: string
   kind: 'app' | 'view'
   mode: PromptRequest['mode']
   intent: string
-  errorText?: string
-  currentSource?: string
+  currentHtml?: string
   appName?: string
   screen?: PromptRequest['screen']
 }
 
-/**
- * One answer per attempt: the model replies with the meta json and the whole source.
- * A compile error resumes the same session with only the errors, up to three attempts.
- */
-async function generateSource(ctx: JobContext, request: SourceRequest): Promise<{ source: string; meta: Record<string, unknown> | null }> {
+/** One turn: the model replies with the meta json and the whole screen as HTML. Nothing to compile. */
+async function generateScreen(ctx: JobContext, request: ScreenRequest): Promise<{ html: string; meta: Record<string, unknown> | null }> {
   const cwd = await persist.ensureWorkspace(request.appId)
-  const built = await buildPrompt({
+  const prompt = await buildPrompt({
     kind: request.kind,
     mode: request.mode,
     intent: request.intent,
     appId: request.appId,
     appName: request.appName,
-    errorText: request.errorText,
-    currentSource: request.currentSource,
+    currentHtml: request.currentHtml,
     screen: request.screen,
   })
-  let sessionId: string | undefined
-  let errors: CompileError[] = []
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    if (ctx.signal.aborted) throw new GeneratorError('Cancelled')
-    if (attempt > 1) ctx.emit({ type: 'status', step: 'fixing', text: `Fixing compile error (attempt ${attempt}/3)` })
-    const turn = await drive(ctx, {
-      prompt: attempt === 1 ? built.prompt : repairPrompt(errors.map(formatError).join('\n'), request.kind),
-      cwd,
-      kind: request.kind,
-      resumeSessionId: sessionId,
-      freshSession: attempt === 1,
-    })
-    sessionId = turn.sessionId || sessionId
-    ctx.emit({ type: 'status', step: 'compiling', text: 'Compiling' })
-    const answer = parseScreenAnswer(turn.output)
-    if (!answer.source) {
-      errors = [{ message: 'The answer had no ```tsx block with the source.' }]
-      continue
-    }
-    const compiled = await compileApp(answer.source)
-    const shape = shapeErrors(answer.source, request.kind)
-    if (compiled.ok && shape.length === 0) return { source: answer.source, meta: answer.meta }
-    errors = [...(compiled.ok ? [] : compiled.errors), ...shape]
-    // A turn that cannot be resumed (no session id) starts over with the full prompt.
-    if (!sessionId) built.prompt = `${built.prompt}\n\nThe previous answer did not compile:\n${errors.map(formatError).join('\n')}`
-  }
-  throw new GeneratorError(errors.map(formatError).join('\n') || 'Compile failed')
+  const output = await drive(ctx, { prompt, cwd, kind: request.kind })
+  const answer = parseScreenAnswer(output)
+  if (!answer.html) throw new GeneratorError('The answer had no screen')
+  return { html: answer.html, meta: answer.meta }
 }
 
-async function generateJson(
-  ctx: JobContext,
-  input: {
-    mode: 'content'
-    kind: GenKind
-    intent: string
-    appId?: string
-    schema?: Record<string, unknown>
-    sessionKey: string
-    cwd: string
-  },
-): Promise<unknown> {
-  const provider = await getProvider()
-  const schema =
-    input.schema && (provider.id === 'codex' || provider.id === 'claude') ? strictOutputSchema(input.schema) : input.schema
-  let sessionId: string | undefined
-  let problems: string[] = []
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    if (ctx.signal.aborted) throw new GeneratorError('Cancelled')
-    if (attempt > 1) ctx.emit({ type: 'status', step: 'fixing', text: 'Fixing the response' })
-    const built = await buildPrompt({
-      kind: input.kind,
-      mode: input.mode,
-      intent: problems.length ? `${input.intent}\n\nThe previous JSON was invalid:\n${problems.join('\n')}` : input.intent,
-      appId: input.appId,
-      schema,
-      attempt,
-    })
-    const turn = await drive(ctx, {
-      prompt: built.prompt,
-      cwd: input.cwd,
-      kind: input.kind,
-      schema,
-      resumeSessionId: attempt === 1 ? undefined : sessionId,
-      freshSession: attempt === 1,
-      sessionKey: input.sessionKey,
-    })
-    sessionId = turn.sessionId || sessionId
-    try {
-      const data = parseJsonText(turn.output)
-      problems = validateJson(schema, data)
-      if (!problems.length) return data
-    } catch (err) {
-      problems = [err instanceof Error ? err.message : 'invalid JSON']
-    }
-  }
-  throw new GeneratorError(problems.join('; ') || 'Response did not match the schema')
-}
-
-async function drive(
-  ctx: JobContext,
-  input: {
-    prompt: string
-    cwd: string
-    kind: GenKind
-    schema?: Record<string, unknown>
-    resumeSessionId?: string
-    freshSession?: boolean
-    sessionKey?: string
-  },
-): Promise<{ sessionId?: string; output: string }> {
+async function drive(ctx: JobContext, input: { prompt: string; cwd: string; kind: GenKind }): Promise<string> {
   const provider = await getProvider()
   const settings = settingsFor(provider.id, input.kind)
   let output = ''
-  let sessionId = input.resumeSessionId
   let sawThinking = false
   for await (const event of runProvider(provider, {
     prompt: input.prompt,
     cwd: input.cwd,
     kind: input.kind,
-    jsonSchema: input.schema,
-    resumeSessionId: input.resumeSessionId,
-    freshSession: input.freshSession,
-    sessionKey: input.sessionKey,
     signal: ctx.signal,
     timeoutMs: timeoutFor(input.kind),
     model: settings.model,
@@ -434,7 +280,6 @@ async function drive(
     if (ctx.signal.aborted) throw new GeneratorError('Cancelled')
     if (event.type === 'error') throw new GeneratorError(event.message, Boolean(event.auth))
     if (event.type === 'end') {
-      sessionId = event.sessionId || sessionId
       if (event.output) output = event.output
       continue
     }
@@ -447,7 +292,7 @@ async function drive(
     })
   }
   if (ctx.signal.aborted) throw new GeneratorError('Cancelled')
-  return { sessionId, output }
+  return output
 }
 
 function relay(ctx: JobContext, event: SseEvent | { type: 'thinking' | 'text' | 'tool' | 'log' | 'status'; text: string }, markThinking: () => boolean): void {
@@ -487,23 +332,6 @@ function normalizeDelta(value: unknown): WorldDelta | null {
   return raw
 }
 
-function shapeErrors(source: string, kind: 'app' | 'view'): CompileError[] {
-  if (kind === 'view') {
-    if (!/export\s+default\s+function\s+View\b/.test(source)) {
-      return [{ message: 'View must be `export default function View({ params, context })`.' }]
-    }
-    return []
-  }
-  if (!/export\s+default\s+function\s+App\b/.test(source)) {
-    return [{ message: 'App must be `export default function App()`.' }]
-  }
-  return []
-}
-
-function formatError(error: CompileError): string {
-  return error.line ? `Line ${error.line}: ${error.message}` : error.message
-}
-
 export async function matchExisting(intent: string): Promise<string | null> {
   const needle = intent.trim().toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
   if (needle.length < 2) return null
@@ -539,11 +367,10 @@ function sameStore(intent: string, shape: string): boolean {
   return intent + 's' === key || intent + 'es' === key || key + 's' === intent || key + 'es' === intent
 }
 
-async function scratchDir(key: string): Promise<string> {
-  const safe = key.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || 'scratch'
-  const dir = path.join(workspacesDir, '_scratch', safe)
-  await fs.mkdir(dir, { recursive: true })
-  return dir
+/** A next screen keeps the look of the one it came from: that screen's <style> blocks go first, unless repeated. */
+function inheritStyles(from: string, html: string): string {
+  const blocks = (from.match(/<style\b[^>]*>[\s\S]*?<\/style>/gi) || []).filter((block) => !html.includes(block))
+  return blocks.length ? `${blocks.join('\n')}\n${html}` : html
 }
 
 function viewIdFor(intent: string): string {
@@ -555,11 +382,6 @@ function viewIdFor(intent: string): string {
 function titleOf(intent: string): string {
   const line = intent.split('\n')[0]?.trim() || 'Screen'
   return line.length <= 48 ? line : `${line.slice(0, 47).trim()}…`
-}
-
-function summarize(data: unknown): string {
-  const text = JSON.stringify(data)
-  return text.length <= 180 ? text : `${text.slice(0, 179)}…`
 }
 
 export async function describeWorld(): Promise<Awaited<ReturnType<typeof worldDigest>>> {

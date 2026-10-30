@@ -4,23 +4,17 @@ import path from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { client, methods, ndJsonStream, PROTOCOL_VERSION, type ClientConnection, type SessionConfigOption, type SessionUpdate } from '@agentclientprotocol/sdk'
 import { binFor, looksLikeAuth, settingsFor, signedOutReason } from '../config'
-import { JSON_SESSION_RULES, SCREEN_SYSTEM_PROMPT } from '../prompts'
+import { SCREEN_SYSTEM_PROMPT } from '../prompts'
 import { childEnv } from '../child-env'
-import { loadSession, saveSession } from '../sessions'
 import type { Availability, GenEvent, GeneratorProvider, RunOptions } from '../types'
 import { capture, memoAvailability, publicError } from './util'
-
-/** Every turn is a single answer. `screen` and `json` only pick the system prompt. */
-type Mode = 'screen' | 'json'
 
 type Live = {
   key: string
   child: ChildProcess
   connection: ClientConnection
-  loadSession: boolean
   dead: boolean
   stderr: string
-  sessions: Map<string, { cwd: string; mode: Mode }>
   updates: Map<string, (update: SessionUpdate) => void>
 }
 
@@ -85,10 +79,8 @@ async function startPool(key: string, model: string, effort: string): Promise<Li
     key,
     child,
     connection,
-    loadSession: false,
     dead: false,
     stderr: '',
-    sessions: new Map(),
     updates: new Map(),
   }
   holder.live = live
@@ -108,12 +100,11 @@ async function startPool(key: string, model: string, effort: string): Promise<Li
     live.dead = true
   })
   try {
-    const init = await connection.agent.request(methods.agent.initialize, {
+    await connection.agent.request(methods.agent.initialize, {
       protocolVersion: PROTOCOL_VERSION,
       clientInfo: { name: 'slopOS', version: '0.1.0' },
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
     })
-    live.loadSession = Boolean(init.agentCapabilities?.loadSession)
     return live
   } catch (err) {
     live.dead = true
@@ -123,10 +114,6 @@ async function startPool(key: string, model: string, effort: string): Promise<Li
   }
 }
 
-/** Grok's own system prompt tells it to work with tools. Replace it on session/new so a turn is one answer. */
-function sessionMeta(mode: Mode): Record<string, string> {
-  return { systemPromptOverride: mode === 'json' ? JSON_SESSION_RULES : SCREEN_SYSTEM_PROMPT }
-}
 
 function refuse(options: { optionId: string; kind: string }[]): { outcome: { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' } } {
   const option = options.find((item) => item.kind === 'reject_once' || item.kind === 'reject_always')
@@ -189,7 +176,6 @@ function selectableValues(option: SessionConfigOption): string[] {
 /**
  * The CLI flag loses to the user's own config in ACP mode.
  * Set model and effort on the session so slopOS always wins.
- * Called after session/new, session/load, and an in-memory resume.
  */
 async function ensureSessionSettings(live: Live, sessionId: string, model: string, effort: string, advertised: SessionConfigOption[] | null | undefined): Promise<void> {
   let options = advertised ?? undefined
@@ -215,42 +201,18 @@ async function ensureSessionSettings(live: Live, sessionId: string, model: strin
   await apply('reasoning_effort', 'thought_level', effort, 'reasoning effort')
 }
 
-async function openSession(live: Live, opts: RunOptions, restarted: boolean): Promise<string> {
-  const cwd = path.resolve(opts.cwd)
-  const mode: Mode = opts.kind === 'content' ? 'json' : 'screen'
-  let sessionId: string | undefined
-  let advertised: SessionConfigOption[] | null | undefined
-  if (!restarted && opts.resumeSessionId && !opts.freshSession) {
-    sessionId = opts.resumeSessionId
-  } else if (!opts.freshSession && opts.sessionKey) {
-    const saved = await loadSession(opts.sessionKey)
-    if (saved && saved.model === opts.model && saved.effort === opts.effort && saved.cwd === cwd) {
-      if (!restarted && live.sessions.has(saved.sessionId)) {
-        sessionId = saved.sessionId
-      } else if (live.loadSession) {
-        try {
-          const loaded = await live.connection.agent.request(methods.agent.session.load, { sessionId: saved.sessionId, cwd, mcpServers: [] })
-          sessionId = saved.sessionId
-          advertised = loaded.configOptions
-        } catch {
-          /* the saved id is not loadable on this process */
-        }
-      }
-    }
-  }
-  if (!sessionId) {
-    const created = await live.connection.agent.request(methods.agent.session.new, {
-      cwd,
-      mcpServers: [],
-      _meta: sessionMeta(mode),
-    })
-    sessionId = created.sessionId
-    advertised = created.configOptions
-  }
-  await ensureSessionSettings(live, sessionId, opts.model, opts.effort, advertised)
-  live.sessions.set(sessionId, { cwd, mode })
-  if (opts.sessionKey) await saveSession(opts.sessionKey, { sessionId, model: opts.model, effort: opts.effort, cwd })
-  return sessionId
+/**
+ * Every turn is a fresh session with one answer.
+ * Grok's own system prompt tells it to work with tools, so session/new replaces it.
+ */
+async function openSession(live: Live, opts: RunOptions): Promise<string> {
+  const created = await live.connection.agent.request(methods.agent.session.new, {
+    cwd: path.resolve(opts.cwd),
+    mcpServers: [],
+    _meta: { systemPromptOverride: SCREEN_SYSTEM_PROMPT },
+  })
+  await ensureSessionSettings(live, created.sessionId, opts.model, opts.effort, created.configOptions)
+  return created.sessionId
 }
 
 function isDeath(err: unknown, live?: Live): boolean {
@@ -259,10 +221,10 @@ function isDeath(err: unknown, live?: Live): boolean {
   return /agent exited|EPIPE|connection closed|socket hang up|broken pipe/i.test(message)
 }
 
-async function* turn(opts: RunOptions, restarted: boolean): AsyncIterable<GenEvent> {
+async function* turn(opts: RunOptions): AsyncIterable<GenEvent> {
   const live = await ensurePool(opts.model, opts.effort)
   if (live.dead) throw new Error('agent exited')
-  const sessionId = await openSession(live, opts, restarted)
+  const sessionId = await openSession(live, opts)
   const queue = new Gate<{ event?: GenEvent; done?: boolean; error?: unknown }>()
   let output = ''
   live.updates.set(sessionId, (update) => {
@@ -296,8 +258,7 @@ async function* turn(opts: RunOptions, restarted: boolean): AsyncIterable<GenEve
       yield { type: 'error', message: signedOutReason('grok'), auth: true }
       return
     }
-    yield { type: 'end', sessionId, output }
-    if (opts.sessionKey) await saveSession(opts.sessionKey, { sessionId, model: opts.model, effort: opts.effort, cwd: path.resolve(opts.cwd) })
+    yield { type: 'end', output }
   } finally {
     live.updates.delete(sessionId)
     opts.signal.removeEventListener('abort', onAbort)
@@ -316,7 +277,7 @@ function drop(model: string, effort: string): void {
 
 async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
   try {
-    yield* turn(opts, false)
+    yield* turn(opts)
   } catch (err) {
     if (opts.signal.aborted) return
     if (!isDeath(err)) {
@@ -327,7 +288,7 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
     drop(opts.model, opts.effort)
     try {
       yield { type: 'status', text: 'Restarting Grok' }
-      yield* turn(opts, true)
+      yield* turn(opts)
     } catch (err2) {
       if (opts.signal.aborted) return
       const message = publicError(err2 instanceof Error ? err2.message : 'Grok failed')

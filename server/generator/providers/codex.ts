@@ -1,10 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import fs from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import { binFor, looksLikeAuth, settingsFor, signedOutReason } from '../config'
 import { childEnv } from '../child-env'
-import { loadSession, saveSession } from '../sessions'
 import type { Availability, GenEvent, GeneratorProvider, RunOptions } from '../types'
 import { capture, memoAvailability, publicError } from './util'
 
@@ -21,8 +18,7 @@ const availability = memoAvailability(async (): Promise<Availability> => {
   return { available: true, loggedIn: true, model, effort }
 })
 
-function argsFor(opts: RunOptions, schemaPath: string | null, outPath: string | null, sessionId?: string): string[] {
-  // Sandbox flags belong on `exec`, before `resume`. The resume subcommand does not accept them.
+function argsFor(opts: RunOptions): string[] {
   const args = [
     'exec',
     '--json',
@@ -39,13 +35,11 @@ function argsFor(opts: RunOptions, schemaPath: string | null, outPath: string | 
     'approval_policy="never"',
   ]
   if (opts.model && opts.model !== 'default') args.push('-m', opts.model)
-  if (schemaPath && outPath) args.push('--output-schema', schemaPath, '-o', outPath)
-  if (sessionId) args.push('resume', sessionId)
   args.push('-')
   return args
 }
 
-type Parsed = { sessionId?: string; output: string; events: GenEvent[]; failed?: string }
+type Parsed = { output: string; events: GenEvent[]; failed?: string }
 
 function consume(line: string, state: Parsed): void {
   let msg: Record<string, unknown>
@@ -55,7 +49,6 @@ function consume(line: string, state: Parsed): void {
     return
   }
   const type = String(msg.type || '')
-  if (type === 'thread.started' && typeof msg.thread_id === 'string') state.sessionId = msg.thread_id
   if (type === 'error' || type === 'turn.failed') {
     state.failed = publicError(messageOf(msg))
     return
@@ -105,22 +98,8 @@ function fileOf(item: Record<string, unknown>): string {
   return 'file'
 }
 
-async function resolveResume(opts: RunOptions): Promise<string | undefined> {
-  if (opts.freshSession) return undefined
-  if (opts.resumeSessionId) return opts.resumeSessionId
-  if (!opts.sessionKey) return undefined
-  const saved = await loadSession(opts.sessionKey)
-  if (!saved || saved.cwd !== path.resolve(opts.cwd)) return undefined
-  return saved.sessionId
-}
-
 async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
-  const resume = await resolveResume(opts)
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'slopos-codex-'))
-  const schemaPath = opts.jsonSchema ? path.join(dir, 'schema.json') : null
-  const outPath = opts.jsonSchema ? path.join(dir, 'out.json') : null
-  if (schemaPath && opts.jsonSchema) await fs.writeFile(schemaPath, JSON.stringify(opts.jsonSchema))
-  const child = spawn(binFor('codex'), argsFor(opts, schemaPath, outPath, resume), {
+  const child = spawn(binFor('codex'), argsFor(opts), {
     cwd: path.resolve(opts.cwd),
     env: childEnv(),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -159,14 +138,7 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
       yield { type: 'error', message: state.failed, auth: looksLikeAuth(state.failed) || looksLikeAuth(stderr) }
       return
     }
-    let output = state.output
-    if (outPath) {
-      try {
-        output = await fs.readFile(outPath, 'utf8')
-      } catch {
-        /* the message text is the result */
-      }
-    }
+    const output = state.output
     const auth = looksLikeAuth(stderr) || looksLikeAuth(output)
     if (exit !== 0 && !output) {
       const message = publicError(stderr || `Codex exited ${exit}`)
@@ -177,15 +149,10 @@ async function* run(opts: RunOptions): AsyncIterable<GenEvent> {
       yield { type: 'error', message: signedOutReason('codex'), auth: true }
       return
     }
-    const sessionId = state.sessionId || resume
-    if (sessionId && opts.sessionKey) {
-      await saveSession(opts.sessionKey, { sessionId, model: opts.model, effort: opts.effort, cwd: path.resolve(opts.cwd) })
-    }
-    yield { type: 'end', sessionId, output }
+    yield { type: 'end', output }
   } finally {
     opts.signal.removeEventListener('abort', onAbort)
     children.delete(child)
-    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 
