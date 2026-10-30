@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { sendJson, sendText, readBody, type Ctx } from './http'
+import { encodingFor, sendEncoded } from './compress'
+import { sendJson, readBody, type Ctx } from './http'
 import type { Router } from './router'
 import { bundleFor } from './apps/bundles'
 import { deleteApp, getApp, listApps } from './apps/registry'
@@ -32,16 +33,31 @@ export function registerRoutes(router: Router): void {
     if (!id || !APP_ID.test(id)) return sendJson(ctx.res, 400, { error: 'invalid id' })
     const code = await bundleFor(id)
     if (!code) return sendJson(ctx.res, 404, { error: 'not found' })
-    const etag = `"${createHash('sha1').update(code).digest('hex').slice(0, 16)}"`
+    const body = Buffer.from(code)
+    const hash = createHash('sha1').update(body).digest('hex').slice(0, 16)
+    const versionRaw = ctx.query.get('v') || ''
+    const version = /^[A-Za-z0-9._-]{1,64}$/.test(versionRaw) ? versionRaw : ''
+    const encoding = encodingFor(ctx.req, body.length, '.js')
+    const tag = version ? `${version}-${hash}` : hash
+    const etag = `"${encoding ? `${tag}-${encoding}` : tag}"`
+    const cacheControl = version ? 'public, max-age=31536000, immutable' : 'no-cache'
     if (ctx.req.headers['if-none-match'] === etag) {
-      ctx.res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' })
+      ctx.res.writeHead(304, { ETag: etag, 'Cache-Control': cacheControl, Vary: 'Accept-Encoding' })
       ctx.res.end()
       return
     }
-    sendText(ctx.res, 200, code, 'text/javascript; charset=utf-8', {
-      ETag: etag,
-      'Cache-Control': 'no-cache',
-    })
+    sendEncoded(
+      ctx.req,
+      ctx.res,
+      body,
+      {
+        'Content-Type': 'text/javascript; charset=utf-8',
+        ETag: etag,
+        'Cache-Control': cacheControl,
+      },
+      `${version}:${hash}`,
+      encoding,
+    )
   })
 
   router.delete('/api/apps/:id', async (ctx) => {

@@ -1,6 +1,5 @@
 import { Component, useEffect, useState, type ComponentType, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Spinner } from '../../web/src/design/kit'
 import { frameAppId, frameVersion, isForwardedShortcut, reportError, send, shortcutPayload } from './host'
 import { SlopProvider } from './context'
 import { WorldProvider } from './world'
@@ -52,7 +51,6 @@ function FrameApp() {
         if (cancel) return
         if (typeof mod.default !== 'function') throw new Error('App has no default export component')
         setApp(() => mod.default as ComponentType)
-        send('ready', {})
       })
       .catch((err: unknown) => {
         if (cancel) return
@@ -67,13 +65,15 @@ function FrameApp() {
   }, [])
 
   if (error) return <Crash message={error} />
-  if (!App) {
-    return (
-      <div className="slop-frame-loading">
-        <Spinner />
-      </div>
-    )
-  }
+  if (!App) return null
+  return <Painted app={App} />
+}
+
+/** Tell the shell the app has committed, so the open placeholder can leave. */
+function Painted({ app: App }: { app: ComponentType }) {
+  useEffect(() => {
+    send('ready', {})
+  }, [])
   return (
     <ErrorBoundary>
       <div className="slop-app-root">

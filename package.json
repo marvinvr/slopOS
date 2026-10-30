@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build --config vite.config.ts && vite build --config vite.runtime.config.ts && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server/index.js --sourcemap",
+    "build": "vite build --config vite.config.ts && vite build --config vite.runtime.config.ts && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server/index.js --sourcemap && node scripts/precompress.mjs",
     "start": "npm run build && node dist/server/index.js",
     "dev": "vite build --config vite.runtime.config.ts && concurrently -k -n runtime,server,web -c gray,cyan,magenta \"vite build --config vite.runtime.config.ts --watch\" \"PORT=4748 tsx watch server/index.ts\" \"vite --config vite.config.ts\"",
     "typecheck": "tsc --noEmit",

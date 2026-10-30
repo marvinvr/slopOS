@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { SLOP_PROTOCOL } from '../../../../runtime/protocol'
 import { Button } from '../../design/kit'
 import { cx } from '../../design/kit/cx'
 import { useWindowBridge } from '../bridge/useWindowBridge'
 import { beginWindowFix, fixApp, providerLabel, useGeneration } from '../generation'
+import { AppTile } from '../icons'
 import { MENU_H } from '../metrics'
 import { previewAt } from '../snap'
 import { clearEntering, isEntering, useShell, type Win } from '../store'
@@ -32,12 +34,43 @@ export function Window({ win }: { win: Win }) {
   const generator = generation.status
   const fixing = generation.fixing?.windowId === win.id ? generation.fixing : null
   useWindowBridge(win, iframeRef)
+  const src = `/runtime/frame.html?app=${encodeURIComponent(win.appId)}&v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}`
+  const [bootSrc, setBootSrc] = useState(src)
+  const [boot, setBoot] = useState<'in' | 'out' | 'off'>('in')
+  if (bootSrc !== src) {
+    setBootSrc(src)
+    setBoot('in')
+  } else if ((error || fixing) && boot !== 'off') {
+    setBoot('off')
+  }
 
   useEffect(() => {
     if (!opening) return
     clearEntering(win.id)
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setOpening(false)
   }, [opening, win.id])
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const frame = iframeRef.current?.contentWindow
+      if (!frame || event.source !== frame) return
+      const data = event.data as { slop?: unknown; type?: string } | null
+      if (!data || data.slop !== SLOP_PROTOCOL || data.type !== 'ready') return
+      setBoot((current) => (current === 'in' ? 'out' : current))
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  useEffect(() => {
+    if (boot !== 'out') return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setBoot('off')
+      return
+    }
+    const timer = window.setTimeout(() => setBoot('off'), 200)
+    return () => window.clearTimeout(timer)
+  }, [boot])
 
   useEffect(() => {
     const leaving = win.phase === 'closing' || win.phase === 'minimizing'
@@ -220,9 +253,9 @@ export function Window({ win }: { win: Win }) {
     window.addEventListener('pointerup', up)
   }
 
-  const src = `/runtime/frame.html?app=${encodeURIComponent(win.appId)}&v=${encodeURIComponent(String(win.version))}&win=${encodeURIComponent(win.id)}`
   const provider = providerLabel(generator.provider) || 'the generator'
   const appName = app?.name || win.title
+  const showBoot = boot !== 'off' && !fixing && !error
 
   return (
     <section
@@ -262,8 +295,13 @@ export function Window({ win }: { win: Win }) {
           data-win={win.id}
           sandbox="allow-scripts allow-forms allow-modals allow-popups"
           referrerPolicy="no-referrer"
-          aria-hidden={fixing || error ? true : undefined}
+          aria-hidden={fixing || error || showBoot ? true : undefined}
         />
+        {showBoot ? (
+          <div className={cx('shell-window-boot', boot === 'out' && 'is-leaving')} aria-hidden>
+            <AppTile id={win.appId} icon={app?.icon || ''} tint={app?.tint} size={46} />
+          </div>
+        ) : null}
         {!focused ? <div className="shell-window-shield" /> : null}
         {fixing ? (
           <div className="shell-window-state" role="status" aria-live="polite">
