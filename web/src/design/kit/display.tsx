@@ -15,6 +15,21 @@ export function Heading({ level = 1, className, style, children }: HeadingProps)
   )
 }
 
+export type StatProps = Box & {
+  value: ReactNode
+  label?: ReactNode
+  /** `lg` is the one display moment. `md` is a section count. */
+  size?: 'md' | 'lg'
+}
+export function Stat({ value, label, size = 'lg', className, style }: StatProps) {
+  return (
+    <div className={cx('slop-stat', size === 'md' && 'md', className)} style={style}>
+      <p className="slop-stat-value">{value}</p>
+      {label != null && label !== false ? <p className="slop-stat-label">{label}</p> : null}
+    </div>
+  )
+}
+
 export type TextProps = Box & { muted?: boolean; size?: 'xs' | 'sm' | 'md' | 'lg' }
 export function Text({ muted, size = 'md', className, style, children }: TextProps) {
   return (

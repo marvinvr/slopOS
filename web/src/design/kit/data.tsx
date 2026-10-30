@@ -57,16 +57,28 @@ export const Chip = function Chip({
   onClick,
   disabled,
   size = 'md',
+  square,
+  current,
   className,
   style,
   children,
-}: Box & { selected?: boolean; onClick?: () => void; disabled?: boolean; size?: 'sm' | 'md' }) {
+}: Box & {
+  selected?: boolean
+  onClick?: () => void
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  /** Equal box for a day or a single mark. A pill is the default. */
+  square?: boolean
+  /** Draws the quiet ring for "this one is now" (today, the current step). */
+  current?: boolean
+}) {
   return (
     <button
       type="button"
-      className={cx('slop-chip', size === 'sm' && 'sm', selected && 'is-on', className)}
+      className={cx('slop-chip', size === 'sm' && 'sm', square && 'square', current && 'is-current', selected && 'is-on', className)}
       style={style}
       aria-pressed={selected}
+      aria-current={current || undefined}
       disabled={disabled}
       onClick={onClick}
     >
